@@ -83,7 +83,7 @@ def measure_lufs(path: Path) -> float:
 
 def render_timeline(clips: list[TimelineClip], out: Path, *, fps: float | None = None,
                     size: tuple[int, int] | None = None, subtitles: Path | None = None,
-                    preview: bool = True, crf: int = 18,
+                    preview: bool = True, crf: int = 18, fontsdir: Path | None = None,
                     progress: Callable[[str, float], None] | None = None) -> dict:
     if not clips:
         raise ValueError("Nothing to render: the timeline is empty.")
@@ -193,10 +193,10 @@ def render_timeline(clips: list[TimelineClip], out: Path, *, fps: float | None =
         total = sum(frames) / fps
         vf_final = ["setpts=PTS-STARTPTS"]
         if subtitles:
-            fontsdir = get_settings().home / "fonts"
-            sub = str(subtitles).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-            vf_final.append(f"subtitles='{sub}'" + (f":fontsdir='{fontsdir.as_posix()}'"
-                                                    if fontsdir.exists() else ""))
+            def esc(p: Path) -> str:
+                return str(p).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+            vf_final.append(f"subtitles='{esc(subtitles)}'" +
+                            (f":fontsdir='{esc(fontsdir)}'" if fontsdir and fontsdir.exists() else ""))
         tmp_out = out.with_suffix(".part.mp4")
         run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(lst), "-i", str(loud),
                     "-map", "0:v:0", "-map", "1:a:0", "-vf", ",".join(vf_final),

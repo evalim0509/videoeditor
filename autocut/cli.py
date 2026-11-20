@@ -378,6 +378,7 @@ def select_cmd(
     footage: List[Path] = typer.Option(..., "--footage", "-f", exists=True, help="Files or folders."),
     out: Path = typer.Option(Path("output/selection.json"), help="Where to save the selection."),
     preview: Optional[Path] = typer.Option(None, help="Render a quick proxy preview of the picks."),
+    style_name: Optional[str] = typer.Option(None, "--style", help="Style preset to pace toward."),
 ) -> None:
     """Pick the best clips for an instruction (snapped to sentences, never mid-word)."""
     from .analysis import analyze_all
@@ -396,7 +397,10 @@ def select_cmd(
         results = ingest_paths(footage)
         for r in results:
             analyze_all(r.hash, progress=lambda s, x, n=r.path.name: st.update(f"{n}: {s}…"))
-        sel = select_clips([r.hash for r in results], spec)
+        from .style import load_profile
+
+        prof = load_profile(style_name or spec.style_preset) if (style_name or spec.style_preset) else None
+        sel = select_clips([r.hash for r in results], spec, style=prof)
     t = Table("#", "file", "start", "end", "len", "score", "why", title=(
         f"{len(sel['clips'])} clips, {sel['total_duration']:.1f}s (target {sel['target']:.0f}s, "
         f"allowed {sel['range'][0]}–{sel['range'][1]}s, mood: {sel['mood_used']})"),
@@ -427,25 +431,40 @@ def render(
                                      help="Selection JSON from `autocut select`."),
     out: Path = typer.Option(Path("output/edit.mp4"), "--out", "-o", help="Output MP4."),
     preview: bool = typer.Option(True, help="Also write a 540p phone preview."),
+    style_name: Optional[str] = typer.Option(None, "--style", help="Style preset to match."),
+    plain: bool = typer.Option(False, help="No style matching: just cut, crossfade, normalise."),
 ) -> None:
-    """Render a selection from the original files (frame-accurate, crossfades, -14 LUFS)."""
+    """Render a selection from the originals, matched to a style (crop, captions, pacing, colour)."""
     import time
 
     from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 
+    from .editspec import EditSpec
     from .render import clips_from_selection, measure_lufs, render_timeline
+    from .style import load_profile
+    from .stylematch import render_styled
 
     sel = json.loads(selection.read_text())
+    spec = EditSpec(**sel.get("spec", {}))
+    name = style_name or spec.style_preset or sel.get("style")
+    prof = load_profile(name) if name else None
     t0 = time.time()
     with Progress(TextColumn("{task.fields[stage]}"), BarColumn(), TimeElapsedColumn(),
                   console=console) as prog:
         task = prog.add_task("render", total=1.0, stage="starting")
-        info = render_timeline(clips_from_selection(sel), out, preview=preview,
-                               progress=lambda s, x: prog.update(task, completed=x, stage=s))
+        cb = lambda s, x: prog.update(task, completed=x, stage=s)  # noqa: E731
+        if plain:
+            info = render_timeline(clips_from_selection(sel), out, preview=preview, progress=cb)
+        else:
+            info = render_styled(sel, out, spec=spec, profile=prof, preview=preview, progress=cb)
     console.print(f"Rendered [bold]{info['output']}[/bold]: {info['duration']:.2f}s, "
                   f"{info['size'][0]}x{info['size'][1]} @ {info['fps']} fps, "
                   f"{len(info['clip_frames'])} clips, loudness {measure_lufs(Path(info['output'])):.1f} LUFS "
                   f"(was {info['loudness_in']:.1f})  [dim]{time.time() - t0:.0f}s[/dim]")
+    if not plain:
+        console.print(f"Style: {info.get('style') or 'none'} · aspect {info['aspect']} · "
+                      f"{info['segments']} shots ({info['punch_ins']} punch-in cuts) · "
+                      f"{info['captions']} caption lines · colour matched: {info['color_matched']}")
     if info["preview"]:
         console.print(f"Phone preview: {info['preview']}")
 

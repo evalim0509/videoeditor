@@ -387,10 +387,21 @@ def _duplicate(a: Clip, b: Clip, cfg: dict) -> bool:
     return False
 
 
-def select_clips(hashes: list[str], spec: EditSpec, n_runner_ups: int = 10) -> dict:
+def preset_length_range(style, mood_range: list[float]) -> list[float]:
+    """Blend the mood's preferred clip length with the reference's pacing (clips stay 3–15 s;
+    faster references get extra punch-in cuts inside clips at render time)."""
+    lo = float(np.clip(style.shot_median * 2.5, 3.0, 8.0))
+    hi = float(np.clip(style.shot_p90 * 2.5, lo + 2.0, 15.0))
+    a, b = max(lo, mood_range[0]), min(hi, mood_range[1])
+    return [a, b] if b - a >= 2.0 else [lo, hi]
+
+
+def select_clips(hashes: list[str], spec: EditSpec, n_runner_ups: int = 10, style=None) -> dict:
     cfg = load_config()
     mood = spec.mood if spec.mood in cfg["moods"] else "auto"
-    mood_cfg = cfg["moods"][mood]
+    mood_cfg = dict(cfg["moods"][mood])
+    if style is not None and style.cuts_per_minute >= 6:
+        mood_cfg["preferred_length"] = preset_length_range(style, mood_cfg.get("preferred_length", [4, 10]))
     weights = mood_cfg["weights"]
     target = float(spec.target_duration or cfg["default_target_seconds"])
     lo_t, hi_t = target * (1 - spec.duration_tolerance), target * (1 + spec.duration_tolerance)
@@ -468,6 +479,8 @@ def select_clips(hashes: list[str], spec: EditSpec, n_runner_ups: int = 10) -> d
     return {
         "spec": spec.model_dump(),
         "mood_used": mood,
+        "preferred_length": mood_cfg.get("preferred_length"),
+        "style": style.name if style is not None else None,
         "target": target, "range": [round(lo_t, 1), round(hi_t, 1)],
         "total_duration": round(total, 2),
         "clips": [c.to_dict() for c in chosen],

@@ -14,7 +14,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 8. Voice input (server endpoint + CLI)
 - [x] 9. Clip selector — **[ME]** confirmed by user, weights tuned from feedback
 - [x] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
-- [ ] 11. Style matching — **[ME]** watch the output
+- [ ] 11. Style matching — **[ME]** watch the output  ← built & verified, waiting for user to watch
 - [ ] 12. `autocut run` one-command pipeline
 - [ ] 13. Mobile-first web app / PWA
 - [ ] 14. Review screen
@@ -252,3 +252,29 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   63.233 s; each clip's first frame matches the original frame at its start (mean diff 0.3 vs 3–21
   for neighbouring frames); -14.1 LUFS integrated, true peak -1.3 dBFS; joins have no clicks
   (max sample jump at joins 0.07 vs 0.25 typical audio). 107 s render on 4 CPU cores.
+
+### Phase 11 — style matching
+- `autocut render sel.json --style NAME` → `stylematch.render_styled()` (`--plain` skips styling).
+- **Pacing**: selector blends the mood's preferred clip length with the preset (median·2.5 …
+  p90·2.5, clamped 3–15 s). Clips longer than ~1.6× the target segment (preset median·1.8, clamped
+  1.6–4 s; paris_vlog → 2.2 s) get **punch-in cuts** at word gaps, alternating 1.0×/1.15× framing;
+  split points snapped to the frame grid, contiguous pieces joined without crossfade. Funny-60
+  TikTok: 11 clips → 29 shots (18 punch-ins). Skipped when the reference is ~one take (<6 cuts/min).
+- **Beat sync**: if the preset is beat-synced, clip boundaries move to a source beat within ±0.25 s
+  that lies in a word-free zone (paris_vlog isn't, so 0 moves).
+- **Face-following crop**: target aspect from EditSpec, else preset, else source. Face centre track
+  (4 fps, gaps interpolated) → median filter → dead zone (22 % of crop width) → exponential easing
+  (τ 0.6 s) → RDP-simplified keyframes → piecewise-linear FFmpeg `crop` expressions in t. Face
+  placed at ~42 % height. Output sizes: 9:16 → 1080x1920, 4:5 → 1080x1350, 1:1 → 1080x1080.
+  Verified: camera static while the face stays in frame, smooth pans otherwise.
+- **Captions**: ASS karaoke (`\kf`, each word fills as spoken), bundled Inter SemiBold (OFL,
+  `autocut/assets/fonts/`), size from the preset's caption height (clamped 2.8–6 % of height),
+  position from the preset (portrait sits 24 % above the bottom, clear of TikTok's UI). Lines:
+  ≤ 6 words / 30 chars / 3.5 s, break at sentence ends and pauses > 0.9 s; continuation tokens
+  merged ("2" + ".20"); repeated lines dropped; flashes < 0.5 s merged; min on-screen 0.5 s.
+- **Colour**: footage Lab mean/std (proxy frames inside the selected clips) → 60 % of the way to the
+  preset's (std ratio clamped 0.75–1.33, mean shift ≤ 10 L / 8 a,b) baked into a 33³ `.cube` LUT
+  → `lut3d` (tetrahedral). Identity LUT verified when the looks already match.
+- Captions default: EditSpec `captions` if given, else the preset's `captions_present`.
+- Output (funny 60 second tiktok with captions, paris_vlog): 1080x1920, 63.27 s, 1898 frames,
+  A/V equal, -14.1 LUFS, 28 caption lines, 130 s render on 4 cores. 16:9 path verified too.
