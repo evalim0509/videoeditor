@@ -12,7 +12,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
 - [x] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
 - [x] 8. Voice input (server endpoint + CLI)
-- [ ] 9. Clip selector — **[ME]** confirm clips for "funny 60 seconds"  ← built & verified, waiting for user feedback
+- [x] 9. Clip selector — **[ME]** confirmed by user, weights tuned from feedback
 - [ ] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
 - [ ] 11. Style matching — **[ME]** watch the output
 - [ ] 12. `autocut run` one-command pipeline
@@ -222,3 +222,16 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   overlaps; text-overlap duplicates removed; chronological order, strongest clip first as a hook for
   funny/hype. Reasons are generated from the top weighted contributions + the quote, with a
   "speech is hard to make out" flag for low-confidence words.
+
+#### [ME] feedback 2 (phase 9)
+- User removed #6 (1:05–1:12 "Great. Nice. Nice. You guys. I'm out.") and #10 (2:17–2:23 silent
+  filler); kept the other nine, including the two I had flagged (#7 1:24, #11 2:24).
+- Analysis: #6 had word confidence 0.07 (kept clips: 0.42–0.79) and only 19 % speech → mostly
+  noise transcribed as words; #10 had no speech and no sound events (kept silent #5 has the
+  strongest laughter). Also found 0:47–0:54 (user-confirmed lively moment) was wrongly blocked by
+  the duplicate check because it shared "it's a good one" with clip #1.
+- Fixes: new features `dead_air` (no speech and no laughter/cheering/applause/music/shouting ≥ 0.3)
+  and `garbled` (words present but mean confidence < 0.25), negative weights in every mood
+  (funny: −1.5 / −2.0); duplicates now need ≥ 3 shared *content* words (stopwords ignored).
+- Result: both removed clips gone, all nine kept clips still selected, 0:47–0:54 and 1:19–1:23 fill
+  the gap; 63.3 s (range 54–66). Locked in by `test_user_feedback_checkpoint2_funny60`.

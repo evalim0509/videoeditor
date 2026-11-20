@@ -252,6 +252,11 @@ def compute_features(fa: FileAnalysis, c: Clip, spec: EditSpec, cfg: dict, mood_
         "face_size": min(1.0, float(np.mean(fa.face_area[r])) / 0.12) if r.stop > r.start else 0.0,
     }
     f["calmness"] = 1.0 - f["energy"]
+    # dead air: no talking and nothing notable to hear (no laughter / cheering / music / shouting)
+    events = max(f["laughter"], f["cheering"], f["applause"], f["music"], f["shouting"])
+    f["dead_air"] = 1.0 if (f["speech"] < 0.1 and events < 0.3) else 0.0
+    # garbled: there are "words" but the recogniser had almost no confidence → likely noise/invented
+    f["garbled"] = 1.0 if (n_words and f["clarity"] < 0.25) else 0.0
     if "first_sentence" in c.features:
         f["complete"] = 1.0
     else:
@@ -362,11 +367,22 @@ def _overlaps(a: Clip, b: Clip) -> bool:
     return a.hash == b.hash and a.start < b.end and b.start < a.end
 
 
+STOPWORDS = set("""a an the and or but so to of in on at for with is are was were be been it its it's
+s that this these those i i'm im you your we we're our he she they them my me oh yeah yes no not
+do does did just like um uh okay ok one very really what how there here then now""".split())
+
+
+def _content_words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z']+", text.lower()) if w not in STOPWORDS and len(w) > 1}
+
+
 def _duplicate(a: Clip, b: Clip, cfg: dict) -> bool:
+    """Same thing said twice (e.g. a retake). Short common phrases like "it's a good one" don't
+    count: at least 3 shared content words are required."""
     if a.text and b.text:
-        wa = set(re.findall(r"\w+", a.text.lower()))
-        wb = set(re.findall(r"\w+", b.text.lower()))
-        if wa and wb and len(wa & wb) / min(len(wa), len(wb)) > cfg["duplicate_text_overlap"] and len(wa | wb) > 3:
+        wa, wb = _content_words(a.text), _content_words(b.text)
+        shared = wa & wb
+        if len(shared) >= 3 and len(shared) / min(len(wa), len(wb)) > cfg["duplicate_text_overlap"]:
             return True
     return False
 

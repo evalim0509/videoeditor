@@ -21,36 +21,41 @@
 #   visual        similarity to the visual query ("showing ...") — only used if you asked for one
 #   keyword       mentions one of your "about ..." keywords
 #   length_fit    how close the clip length is to this mood's preferred length
+#   dead_air      1 if nobody talks and nothing notable is heard (use a negative weight)
+#   garbled       1 if the words were barely recognisable (noise / mumbling) (negative weight)
 
 moods:
   funny:
     weights: {laughter: 3.0, energy: 1.2, shouting: 0.6, speech: 0.4, speech_rate: 0.4,
-              clarity: 0.8, complete: 0.8, face: 0.6, face_size: 0.3, length_fit: 0.8}
+              clarity: 0.8, complete: 0.8, face: 0.6, face_size: 0.3, length_fit: 0.8,
+              dead_air: -1.5, garbled: -2.0}   # tuned from your feedback (checkpoint 2)
     preferred_length: [4, 9]     # seconds
     hook_first: true             # open with the strongest clip, then chronological
   hype:
     weights: {energy: 2.5, cheering: 1.5, applause: 1.0, shouting: 1.0, music: 1.0, laughter: 1.0,
-              clarity: 0.3, complete: 0.3, face: 0.3, length_fit: 1.0}
+              clarity: 0.3, complete: 0.3, face: 0.3, length_fit: 1.0, dead_air: -1.0,
+              garbled: -1.0}
     preferred_length: [3, 6]
     hook_first: true
   emotional:
     weights: {clarity: 1.2, complete: 1.2, face: 0.8, face_size: 1.2, speech: 0.6, music: 0.6,
-              calmness: 0.6, laughter: 0.4, length_fit: 0.8}
+              calmness: 0.6, laughter: 0.4, length_fit: 0.8, dead_air: -0.5, garbled: -2.0}
     preferred_length: [6, 12]
     hook_first: false
   calm:
     weights: {calmness: 1.5, music: 0.8, complete: 0.8, clarity: 0.6, face: 0.3, shouting: -1.0,
-              speech_rate: -0.3, length_fit: 0.8}
+              speech_rate: -0.3, length_fit: 0.8, garbled: -1.5}
     preferred_length: [6, 12]
     hook_first: false
   informative:
     weights: {speech: 1.2, speech_rate: 1.0, clarity: 1.6, complete: 1.6, face: 0.4, energy: 0.3,
-              length_fit: 0.8}
+              length_fit: 0.8, dead_air: -1.5, garbled: -2.5}
     preferred_length: [8, 15]
     hook_first: false
   auto:
     weights: {laughter: 1.5, energy: 1.5, clarity: 1.0, complete: 1.0, face: 0.5, speech: 0.5,
-              music: 0.4, cheering: 0.6, applause: 0.4, length_fit: 0.8}
+              music: 0.4, cheering: 0.6, applause: 0.4, length_fit: 0.8, dead_air: -1.0,
+              garbled: -2.0}
     preferred_length: [4, 10]
     hook_first: true
 

@@ -46,3 +46,26 @@ def test_selection_on_real_footage(instruction):
     spans = sorted((c["start"], c["end"]) for c in clips)
     assert all(a[1] <= b[0] + 1e-6 for a, b in zip(spans, spans[1:])), "overlapping clips"
     assert len(sel["runner_ups"]) > 0
+
+
+@pytest.mark.skipif(not real_footage(), reason="no test footage")
+def test_user_feedback_checkpoint2_funny60():
+    """User removed 1:05–1:12 (garbled speech) and 2:17–2:23 (dead air) and kept the other nine."""
+    from autocut.analysis import analyze_all
+    from autocut.ingest import ingest_file
+    from autocut.intent import parse
+    from autocut.select import select_clips
+
+    r = ingest_file(real_footage()[0])
+    if abs(r.meta["duration"] - 149.4) > 0.5:
+        pytest.skip("feedback applies to IMG_0875.MOV only")
+    analyze_all(r.hash)
+    sel = select_clips([r.hash], parse("funny 60 seconds", available_presets=[]))
+    spans = [(c["start"], c["end"]) for c in sel["clips"]]
+
+    def has(t):
+        return any(a <= t <= b for a, b in spans)
+
+    assert not has(68.0) and not has(140.0)            # removed by the user
+    for t in (61, 10, 19, 24, 39, 26 + 60, 103, 110, 146):  # kept by the user
+        assert has(t), f"lost a kept clip at {t}s"
