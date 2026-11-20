@@ -13,7 +13,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
 - [x] 8. Voice input (server endpoint + CLI)
 - [x] 9. Clip selector — **[ME]** confirmed by user, weights tuned from feedback
-- [ ] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
+- [x] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
 - [ ] 11. Style matching — **[ME]** watch the output
 - [ ] 12. `autocut run` one-command pipeline
 - [ ] 13. Mobile-first web app / PWA
@@ -235,3 +235,20 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   (funny: −1.5 / −2.0); duplicates now need ≥ 3 shared *content* words (stopwords ignored).
 - Result: both removed clips gone, all nine kept clips still selected, 0:47–0:54 and 1:19–1:23 fill
   the gap; 63.3 s (range 54–66). Locked in by `test_user_feedback_checkpoint2_funny60`.
+
+### Phase 10 — renderer
+- `autocut render selection.json -o out.mp4` → `render.render_timeline(clips, out, ...)`.
+- Per clip from the **original**: input seek + exact frame count (`-frames:v n`, n = round(len·fps)),
+  same normalisation as proxies (upright, HLG/PQ→SDR, CFR) + optional per-clip filters (phase 11
+  crop/colour), scale/pad to the output frame, near-lossless x264 CRF 10 intermediate.
+- Audio per clip with a tail ≤ 80 ms taken from the silence after the cut (limited by the next word
+  in the cached transcript → never mid-word), joined with equal-power (`qsin`) crossfades; the
+  last clip has no tail, so audio length == video length exactly.
+- Loudness: two-pass `loudnorm` (I=-14, TP=-1, LRA=11, linear) then, if still > 0.3 LU off (quiet
+  sources hit the peak ceiling), gain correction into a latency-compensated `alimiter`.
+- Final: concat → optional ASS subtitles → H.264 High CRF 18 `fast`, AAC 192k 48 kHz, BT.709 tags,
+  `+faststart`; plus a 540p ~1.5 Mbps phone preview (`*.preview.mp4`).
+- Verified on the funny-60 selection: 1897 frames = expected exactly; video 63.2333 s / audio
+  63.233 s; each clip's first frame matches the original frame at its start (mean diff 0.3 vs 3–21
+  for neighbouring frames); -14.1 LUFS integrated, true peak -1.3 dBFS; joins have no clicks
+  (max sample jump at joins 0.07 vs 0.25 typical audio). 107 s render on 4 CPU cores.

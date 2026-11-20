@@ -421,6 +421,35 @@ def select_cmd(
         console.print(f"Preview → {preview}")
 
 
+@app.command()
+def render(
+    selection: Path = typer.Argument(Path("output/selection.json"), exists=True,
+                                     help="Selection JSON from `autocut select`."),
+    out: Path = typer.Option(Path("output/edit.mp4"), "--out", "-o", help="Output MP4."),
+    preview: bool = typer.Option(True, help="Also write a 540p phone preview."),
+) -> None:
+    """Render a selection from the original files (frame-accurate, crossfades, -14 LUFS)."""
+    import time
+
+    from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
+
+    from .render import clips_from_selection, measure_lufs, render_timeline
+
+    sel = json.loads(selection.read_text())
+    t0 = time.time()
+    with Progress(TextColumn("{task.fields[stage]}"), BarColumn(), TimeElapsedColumn(),
+                  console=console) as prog:
+        task = prog.add_task("render", total=1.0, stage="starting")
+        info = render_timeline(clips_from_selection(sel), out, preview=preview,
+                               progress=lambda s, x: prog.update(task, completed=x, stage=s))
+    console.print(f"Rendered [bold]{info['output']}[/bold]: {info['duration']:.2f}s, "
+                  f"{info['size'][0]}x{info['size'][1]} @ {info['fps']} fps, "
+                  f"{len(info['clip_frames'])} clips, loudness {measure_lufs(Path(info['output'])):.1f} LUFS "
+                  f"(was {info['loudness_in']:.1f})  [dim]{time.time() - t0:.0f}s[/dim]")
+    if info["preview"]:
+        console.print(f"Phone preview: {info['preview']}")
+
+
 def main() -> None:  # pragma: no cover
     app()
 
