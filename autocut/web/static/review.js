@@ -128,12 +128,22 @@ function preview(c) {
 async function editCaptions(c) {
   let lines = [];
   try { lines = await api(`/api/projects/${R.pid}/captions?hash=${c.hash}&start=${c.start}&end=${c.end}`); } catch (e) { toast(e.message, "err"); return; }
-  sheet(`<h2>Captions in this clip</h2><p class="sub">Retype anything that's wrong, or tap “Re-listen” and I'll listen to that moment again (optionally with a hint).</p>
-    <div id="cap-lines">${lines.map((l, i) => `<div class="caption-line" data-i="${i}">
+  sheet(`<h2>Captions in this clip</h2><p class="sub">Retype anything that's wrong, or tap “Re-listen” and I'll listen to that moment again (optionally with a hint). Only lines marked <b>me</b> get captions — tap to switch.</p>
+    <div id="cap-lines">${lines.map((l, i) => `<div class="caption-line" data-i="${i}" style="flex-wrap:wrap;${l.me ? "" : "opacity:.6"}">
       <span class="small muted" style="width:44px;flex:none">${t2(l.start)}</span>
-      <input type="text" value="${esc(l.text)}" aria-label="Caption at ${t2(l.start)}">
-      <button class="btn small-btn" data-save="${i}">Save</button>
-      <button class="btn small-btn ghost" data-re="${i}">Re-listen</button></div>`).join("") || '<p class="muted">Nobody talks in this clip.</p>'}</div>`, (s) => {
+      <input type="text" value="${esc(l.text)}" aria-label="Caption at ${t2(l.start)}" style="flex:1;min-width:160px">
+      <div class="row" style="gap:6px">
+        <button class="btn small-btn ${l.me ? "primary" : ""}" data-me="${i}" aria-pressed="${l.me}">${l.me ? "me ✓" : "not me"}</button>
+        <button class="btn small-btn" data-save="${i}">Save</button>
+        <button class="btn small-btn ghost" data-re="${i}">Re-listen</button></div></div>`).join("") || '<p class="muted">Nobody talks in this clip.</p>'}</div>`, (s) => {
+    $$("[data-me]", s).forEach((b) => b.onclick = async () => {
+      const l = lines[+b.dataset.me], me = !l.me;
+      try {
+        await api(`/api/projects/${R.pid}/captions/speaker`, { method: "POST", json: { hash: c.hash, start: l.start, end: l.end, me } });
+        l.me = me; b.textContent = me ? "me ✓" : "not me"; b.classList.toggle("primary", me);
+        b.closest(".caption-line").style.opacity = me ? "" : ".6"; markChanged();
+      } catch (e) { toast(e.message, "err"); }
+    });
     $$("[data-save]", s).forEach((b) => b.onclick = async () => {
       const l = lines[+b.dataset.save], text = b.parentElement.querySelector("input").value;
       try { await api(`/api/projects/${R.pid}/captions`, { method: "PUT", json: { hash: c.hash, start: l.start, end: l.end, text } }); toast("Caption saved — it'll be in the next render."); b.textContent = "Saved ✓"; markChanged(); }

@@ -313,12 +313,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     offset = 0.0
     by_clip: dict[int, list[tuple[float, float, str]]] = {}
     clip_end_out: dict[int, float] = {}
+    speaker_ok = {}
     for seg in segments:
         nf = max(1, int(round((seg.end - seg.start) * fps)))
         tr = get_transcript(seg.hash) or {"words": []}
+        if options.caption_speakers == "me" and seg.hash not in speaker_ok:
+            try:
+                from .speakers import is_me_fn
+
+                speaker_ok[seg.hash] = is_me_fn(seg.hash)
+            except Exception:  # speaker model unavailable → caption everyone rather than nobody
+                speaker_ok[seg.hash] = lambda t: True
+        me = speaker_ok.get(seg.hash, lambda t: True)
         for w in tr["words"]:
             mid = (w["start"] + w["end"]) / 2
-            if seg.start <= mid < seg.end:
+            if seg.start <= mid < seg.end and me(mid):
                 a = offset + max(0.0, w["start"] - seg.start)
                 b = offset + min(seg.end, w["end"]) - seg.start
                 raw = w["word"]

@@ -96,6 +96,25 @@ class RuleBasedParser:
         # 2. duration
         duration = self._duration(t, num_re, numbers)
 
+        # 2b. style wishes → edit settings ("no zoom cuts", "lowercase captions", "keep my colours")
+        pairs = [(str(ph).lower(), e) for e in (v.get("style_options") or []) for ph in e["phrases"]]
+        for phrase, entry in sorted(pairs, key=lambda x: -len(x[0])):
+            for m in t.find(rf"(?<![\w']){_alt([phrase])}(?![\w'])"):
+                spec.options.update(entry["set"])
+                if entry["label"] not in spec.option_labels:
+                    spec.option_labels.append(entry["label"])
+                if entry.get("captions") and spec.captions is None:
+                    spec.captions = True
+                t.consume(m)
+        if re.search(r"caption|subtitle|\btext\b", text.lower()):
+            pairs = [(str(ph).lower(), e) for e in (v.get("caption_modifiers") or []) for ph in e["phrases"]]
+            for phrase, entry in sorted(pairs, key=lambda x: -len(x[0])):
+                for m in t.find(rf"(?<![\w']){_alt([phrase])}(?![\w'])"):
+                    spec.options.update(entry["set"])
+                    if entry["label"] not in spec.option_labels:
+                        spec.option_labels.append(entry["label"])
+                    t.consume(m)
+
         # 3. platform (sets aspect + default length)
         platform_dur = None
         for pname, pinfo in (v.get("platforms") or {}).items():

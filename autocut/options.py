@@ -21,6 +21,7 @@ class RenderOptions(BaseModel):
     caption_case: Literal["original", "lower", "upper"] = "original"
     caption_scale: float = 1.0                   # 1.0 = sized like the reference
     caption_position: Literal["auto", "bottom", "middle", "top"] = "auto"
+    caption_speakers: Literal["me", "all"] = "me"   # only caption your own voice
     punch_ins: bool = True                       # zoom cuts inside long clips (pacing)
     punch_in_spacing: Optional[float] = None     # seconds between zoom cuts; None = auto (≥ 4 s)
     face_follow: bool = True                     # keep faces framed when cropping
@@ -35,4 +36,7 @@ class RenderOptions(BaseModel):
             o.aspect = spec.aspect_ratio
         if spec.captions is not None:
             o.captions = spec.captions
+        for k, v in (spec.options or {}).items():   # style wishes from the instruction text
+            if k in cls.model_fields:
+                setattr(o, k, v)
         return o

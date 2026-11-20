@@ -116,4 +116,8 @@ def download_all(whisper_sizes: list[str]) -> list[str]:
     done.append(f"face detector: {face_detector_model()}")
     clip_model()
     done.append(f"clip: {CLIP_MODEL[0]} / {CLIP_MODEL[1]}")
+    from .speakers import _encoder
+
+    _encoder()
+    done.append("voice recognition: speechbrain ECAPA (VoxCeleb)")
     return done

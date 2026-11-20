@@ -120,3 +120,20 @@ def test_20_interface_and_summary(p):
     summary = s.summary()
     assert "funny" in summary and "60 s" in summary and "captions" in summary
     assert s.model_dump()["source_text"].startswith("funny")
+
+
+def test_21_style_wishes_become_settings(p):
+    s = parse(p, "chill 60 second vlog, lowercase captions, no zoom cuts, keep my colours")
+    assert s.options == {"caption_case": "lower", "punch_ins": False, "color_match": False}
+    assert s.captions is True and s.warnings == []
+    from autocut.options import RenderOptions
+    o = RenderOptions.from_spec(s)
+    assert o.caption_case == "lower" and o.punch_ins is False and o.color_match is False
+
+
+def test_22_caption_modifiers_anywhere_in_sentence(p):
+    s = parse(p, "funny tiktok with big word by word captions at the top, caption everyone")
+    assert s.options["caption_scale"] == 1.4 and s.options["caption_style"] == "karaoke"
+    assert s.options["caption_position"] == "top" and s.options["caption_speakers"] == "all"
+    assert s.warnings == []
+    assert parse(p, "a big trip vlog").options == {}      # "big" without captions isn't a caption size

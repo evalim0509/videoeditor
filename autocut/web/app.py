@@ -55,6 +55,13 @@ class ProjectPatch(BaseModel):
     options: dict | None = None
     style: str | None = None
     context: str | None = None
+    watch_folder: str | None = None      # "" = stop watching
+    auto_edit: bool | None = None
+
+
+class ImportBody(BaseModel):
+    url: str
+    kind: str = "footage"
 
 
 class UploadStart(BaseModel):
@@ -88,6 +95,13 @@ class CaptionBody(BaseModel):
 
 class ContextBody(BaseModel):
     text: str
+
+
+class SpeakerBody(BaseModel):
+    hash: str
+    start: float
+    end: float
+    me: bool
 
 
 class OptionsBody(BaseModel):
@@ -251,6 +265,21 @@ def create_app() -> FastAPI:
                 p["context"] = body.context[:4000]
             if body.style is not None:
                 p["style"] = body.style or None
+            if body.auto_edit is not None:
+                p["auto_edit"] = body.auto_edit
+            if body.watch_folder is not None:
+                wf = body.watch_folder.strip()
+                if wf:
+                    path = Path(wf).expanduser()
+                    if not path.is_absolute():
+                        raise HTTPException(400, "Please give the full folder path.")
+                    try:
+                        path.mkdir(parents=True, exist_ok=True)
+                    except OSError as e:
+                        raise HTTPException(400, f"Can't use that folder: {e}")
+                    p["watch_folder"] = str(path)
+                else:
+                    p["watch_folder"] = None
             if body.options is not None:
                 try:
                     p["options"] = RenderOptions(**{**p.get("options", {}), **body.options}).model_dump()
@@ -275,7 +304,10 @@ def create_app() -> FastAPI:
         def fn(q):
             q[kind] = [x for x in q[kind] if x["id"] != item_id]
         P.update(pid, fn)
-        Path(it["path"]).unlink(missing_ok=True)
+        # only delete files autocut owns (uploads); never touch your Google Drive / original files
+        f = Path(it["path"]).resolve()
+        if P.project_dir(pid).resolve() in f.parents:
+            f.unlink(missing_ok=True)
         if kind == "refs":
             if P.load(pid)["refs"]:
                 J.queue_style(pid)
@@ -289,6 +321,36 @@ def create_app() -> FastAPI:
         if not P.find_item(p, item_id):
             raise HTTPException(404, "Not found.")
         return J.queue_analyze(pid, item_id)
+
+    # ------------------------------------------------------------------ Google Drive
+    @app.get("/api/drive", dependencies=user)
+    def drive(pid: str | None = None):
+        from .watch import drive_roots, suggested_folder
+
+        name = _project_or_404(pid)["name"] if pid else "project"
+        return {"roots": drive_roots(), "suggestion": suggested_folder(name)}
+
+    @app.post("/api/projects/{pid}/watch/scan", dependencies=user)
+    def scan_now(pid: str):
+        from .watch import scan_project
+
+        _project_or_404(pid)
+        return {"added": scan_project(pid)}
+
+    @app.post("/api/projects/{pid}/import", dependencies=user)
+    async def import_link(pid: str, body: ImportBody):
+        from .watch import import_link as _imp
+
+        _project_or_404(pid)
+        if body.kind not in ("footage", "refs"):
+            raise HTTPException(400, "kind must be footage or refs")
+        try:
+            ids = await run_in_threadpool(_imp, pid, body.url.strip(), body.kind)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            raise HTTPException(502, f"Couldn't download from Google Drive: {e}")
+        return {"added": ids}
 
     # ------------------------------------------------------------------ uploads
     @app.post("/api/projects/{pid}/uploads", dependencies=user)
@@ -477,6 +539,15 @@ def create_app() -> FastAPI:
         _footage_hash(_project_or_404(pid), body.hash)
         e = correct_text(body.hash, body.start, body.end + 1e-3, body.text or "")
         return {"edit": e, "lines": caption_lines(body.hash, body.start - 5, body.end + 5)}
+
+    @app.post("/api/projects/{pid}/captions/speaker", dependencies=user)
+    def set_speaker(pid: str, body: SpeakerBody):
+        """Tap "this is me" / "not me" on a caption line (also teaches your voice profile)."""
+        from ..speakers import mark
+
+        _footage_hash(_project_or_404(pid), body.hash)
+        mark(body.hash, body.start, body.end, body.me)
+        return {"ok": True}
 
     @app.post("/api/projects/{pid}/captions/relisten", dependencies=user)
     async def relisten_caption(pid: str, body: CaptionBody):

@@ -41,6 +41,14 @@ def voice_to_spec(audio_path: Path, available_presets: list[str] | None = None) 
     from .intent import parse
 
     tr = transcribe_command(audio_path)
+    if tr["text"] and tr["duration"] >= 1.5:
+        try:  # your voice instructions are always you → refine the "only my voice" caption profile
+            from .ffmpeg import load_audio
+            from .speakers import add_voice_sample
+
+            add_voice_sample(load_audio(audio_path, 16000), weight=1.0)
+        except Exception:
+            pass
     if not tr["text"]:
         spec = EditSpec(warnings=["I didn't hear an instruction in that recording. Try again a bit "
                                   "closer to the mic."])

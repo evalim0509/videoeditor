@@ -232,6 +232,7 @@ async function screenProject(pid) {
         <ul class="list" id="footage-list"></ul>
         <label class="btn ghost block" style="margin-top:10px">+ Add videos
           <input type="file" accept="video/*" multiple hidden data-kind="footage"></label>
+        <div id="drive-box" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)"></div>
       </section>
       <section class="card">
         <h2>2 · Style</h2>
@@ -244,9 +245,9 @@ async function screenProject(pid) {
       </section>
     </div>
     <section class="card">
-      <h2>3 · What should it be?</h2>
-      <p class="sub">Type it, or hold the mic and say it.</p>
-      <textarea id="instr" placeholder="e.g. funny 60 second vlog with captions">${esc(p.instruction || "")}</textarea>
+      <h2>3 · How should it be edited?</h2>
+      <p class="sub">Describe the video and the style in your own words — type it, or hold the mic and say it.</p>
+      <textarea id="instr" placeholder="e.g. funny 60 second vlog with captions, lowercase captions, no zoom cuts, keep my colours">${esc(p.instruction || "")}</textarea>
       <div class="mic-row">
         <button class="mic" id="mic" aria-label="Hold to talk">${icon.mic}</button>
         <div class="small muted" id="mic-hint">Hold to talk · release to send</div>
@@ -267,6 +268,7 @@ async function screenProject(pid) {
   setupMic();
   renderSettings(p.options || {});
   setupStylePicker(p);
+  setupDrive(p);
   $("#make").onclick = makeEdit;
   renderProjectDynamic(p);
   schedulePoll();
@@ -427,6 +429,7 @@ function showUnderstood(r, heard) {
   if (s.visual_query) chips.push(`showing “${s.visual_query}”`);
   if (s.style_preset) chips.push(`style: ${s.style_preset}`);
   if (s.music === false) chips.push("no music");
+  (s.option_labels || []).forEach((l) => chips.push(l));
   if (s.versions > 1) chips.push(`${s.versions} versions`);
   const u = $("#understood");
   u.hidden = false;
@@ -529,6 +532,45 @@ async function setupStylePicker(p) {
   };
   const st = styles.find((s) => s.name === p.style);
   if (st && !(p.style === own && p.style_explained)) $("#style-explain").innerHTML = st.explanation.map((l) => `<li>${esc(l)}</li>`).join("");
+}
+
+async function setupDrive(p) {
+  const box = $("#drive-box");
+  let d = { roots: [], suggestion: null };
+  try { d = await api(`/api/drive?pid=${p.id}`); } catch { }
+  const watching = p.watch_folder;
+  box.innerHTML = `
+    <div style="font-weight:700">Google Drive</div>
+    <p class="small muted" style="margin:4px 0 8px">${watching
+      ? `Watching <b>${esc(watching)}</b>. Put videos in this folder from the Google Drive app on your phone — they're imported as soon as they finish syncing to your computer.`
+      : d.roots.length ? "Drop videos into a Google Drive folder from your phone and they appear here automatically."
+        : "Install Google Drive for desktop on your computer to drop videos in from your phone, or paste a Drive link below."}</p>
+    ${watching ? `<button class="btn small-btn" id="drive-scan">Check now</button> <button class="btn small-btn ghost" id="drive-stop">Stop watching</button>`
+      : d.suggestion ? `<button class="btn small-btn primary" id="drive-use">Use folder “${esc(d.suggestion.split(/[\\/]/).slice(-2).join("/"))}”</button>` : ""}
+    <details style="margin-top:8px"><summary class="small" style="cursor:pointer">Use a different folder</summary>
+      <div class="row" style="margin-top:6px"><input type="text" id="drive-path" placeholder="${esc(d.suggestion || "Full folder path on your computer")}" value="${esc(watching || "")}">
+      <button class="btn small-btn" id="drive-save">Save</button></div></details>
+    <div class="toggle" style="margin-top:6px"><div><div style="font-weight:600">Edit automatically when new videos arrive</div>
+      <div class="small muted">Uses what you wrote in “How should it be edited?”</div></div>
+      <label class="switch"><input type="checkbox" id="auto-edit" ${p.auto_edit ? "checked" : ""}><span></span></label></div>
+    <div class="row" style="margin-top:8px"><input type="text" id="drive-link" placeholder="…or paste a Google Drive link">
+      <button class="btn small-btn" id="drive-import">Import</button></div>`;
+  const setFolder = async (path) => {
+    try { const q = await api(`/api/projects/${p.id}`, { method: "PATCH", json: { watch_folder: path } }); Object.assign(current.project, q); setupDrive(current.project); toast(path ? "Watching that folder now." : "Stopped watching."); }
+    catch (e) { toast(e.message, "err"); }
+  };
+  $("#drive-use") && ($("#drive-use").onclick = () => setFolder(d.suggestion));
+  $("#drive-stop") && ($("#drive-stop").onclick = () => setFolder(""));
+  $("#drive-save").onclick = () => setFolder($("#drive-path").value.trim());
+  $("#drive-scan") && ($("#drive-scan").onclick = async () => { const r = await api(`/api/projects/${p.id}/watch/scan`, { method: "POST" }); toast(r.added ? `Found ${r.added} new video${r.added > 1 ? "s" : ""}.` : "No new finished videos yet."); refreshProject(); });
+  $("#auto-edit").onchange = async (e) => { await api(`/api/projects/${p.id}`, { method: "PATCH", json: { auto_edit: e.target.checked } }); toast(e.target.checked ? "New videos will be edited automatically." : "Automatic edits off."); };
+  $("#drive-import").onclick = async () => {
+    const url = $("#drive-link").value.trim(); if (!url) return;
+    const b = $("#drive-import"); b.disabled = true; b.textContent = "Downloading…";
+    try { const r = await api(`/api/projects/${p.id}/import`, { method: "POST", json: { url } }); toast(`Imported ${r.added.length} video${r.added.length === 1 ? "" : "s"}.`); $("#drive-link").value = ""; refreshProject(); }
+    catch (e) { toast(e.message, "err"); }
+    b.disabled = false; b.textContent = "Import";
+  };
 }
 
 async function makeEdit() {

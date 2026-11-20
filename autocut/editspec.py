@@ -27,6 +27,8 @@ class EditSpec(BaseModel):
     style_preset: Optional[str] = None
     versions: int = 1
     music: Optional[bool] = None                  # explicit "no music" / "with music"
+    options: dict = Field(default_factory=dict)   # style wishes → RenderOptions (e.g. no zoom cuts)
+    option_labels: list[str] = Field(default_factory=list)  # what those wishes were, in words
     warnings: list[str] = Field(default_factory=list)
     parser: str = "rules"
 
@@ -58,6 +60,7 @@ class EditSpec(BaseModel):
             bits.append("no music")
         elif self.music is True:
             bits.append("with music")
+        bits += self.option_labels
         if self.versions > 1:
             bits.append(f"{self.versions} versions")
         return " · ".join(bits) or "best moments (no specific request)"

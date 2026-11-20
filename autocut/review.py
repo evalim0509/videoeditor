@@ -169,9 +169,15 @@ def caption_lines(file_hash: str, start: float, end: float) -> list[dict]:
     from .corrections import effective_transcript
 
     tr = effective_transcript(file_hash) or {"words": [], "sentences": []}
+    try:
+        from .speakers import is_me_fn
+
+        me = is_me_fn(file_hash)
+    except Exception:
+        me = lambda t: True  # noqa: E731
     lines = []
     for s in tr["sentences"]:
         mid = (s["start"] + s["end"]) / 2
         if start - 0.05 <= mid <= end + 0.05:
-            lines.append({"start": s["start"], "end": s["end"], "text": s["text"]})
+            lines.append({"start": s["start"], "end": s["end"], "text": s["text"], "me": me(mid)})
     return lines

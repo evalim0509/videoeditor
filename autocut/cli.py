@@ -552,6 +552,12 @@ def serve(
     if n:
         console.print(f"Resumed {n} unfinished job(s).")
     jobs.ensure_worker()
+    from .web.watch import drive_roots, ensure_watcher
+
+    ensure_watcher()
+    roots = drive_roots()
+    if roots:
+        console.print(f"Google Drive found at {roots[0]} — projects can watch a folder there.")
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("10.255.255.255", 1))

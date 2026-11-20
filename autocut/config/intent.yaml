@@ -112,3 +112,48 @@ filler: [a, an, the, and, or, of, for, to, me, my, i, it, its, it's, make, creat
          thanks, thank, by, as, also, plus, then, now, here, there, today, yesterday,
          videos, done, add, have, has, do, turn, version,
          short-form, shortform, social, media, platform, content]
+
+# Style wishes → edit settings (same settings you can change in the app). Longest phrase wins.
+# `captions: true` means the phrase also implies captions are wanted.
+style_options:
+  - {label: "no zoom cuts", set: {punch_ins: false},
+     phrases: [no zoom cuts, no zoom cut, no zooms, no zoom, no zooming, without zoom cuts, without zooms, no punch ins, no punch-ins, no punchins, no jump zooms]}
+  - {label: "few zoom cuts", set: {punch_ins: true, punch_in_spacing: 8},
+     phrases: [fewer zoom cuts, few zoom cuts, less zoom cuts, less zooming, subtle zoom cuts, subtle zooms, occasional zoom cuts]}
+  - {label: "more zoom cuts", set: {punch_ins: true, punch_in_spacing: 4},
+     phrases: [more zoom cuts, lots of zoom cuts, with zoom cuts, add zoom cuts, punch ins, punch-ins, zoom cuts]}
+  - {label: "lowercase captions", set: {caption_case: lower}, captions: true,
+     phrases: [lowercase captions, lower case captions, lowercase subtitles, lowercase text, all lowercase, lowercase]}
+  - {label: "UPPERCASE captions", set: {caption_case: upper}, captions: true,
+     phrases: [uppercase captions, upper case captions, all caps captions, capital letters, all caps, uppercase]}
+  - {label: "big captions", set: {caption_scale: 1.4}, captions: true,
+     phrases: [big captions, bigger captions, large captions, larger captions, huge captions, bold captions, big subtitles, big text]}
+  - {label: "small captions", set: {caption_scale: 0.8}, captions: true,
+     phrases: [small captions, smaller captions, subtle captions, tiny captions, small subtitles, small text]}
+  - {label: "word-by-word captions", set: {caption_style: karaoke}, captions: true,
+     phrases: [word by word captions, word by word, word-by-word, karaoke captions, karaoke, highlight each word, highlighted words, animated captions]}
+  - {label: "plain captions", set: {caption_style: static}, captions: true,
+     phrases: [plain captions, simple captions, whole line captions, static captions, normal captions, no highlight, no highlighting]}
+  - {label: "captions at the top", set: {caption_position: top}, captions: true,
+     phrases: [captions at the top, captions on top, top captions, subtitles at the top]}
+  - {label: "captions in the middle", set: {caption_position: middle}, captions: true,
+     phrases: [captions in the middle, captions in the center, captions in the centre, centered captions, centred captions]}
+  - {label: "captions at the bottom", set: {caption_position: bottom}, captions: true,
+     phrases: [captions at the bottom, bottom captions, subtitles at the bottom]}
+  - {label: "keep my colours", set: {color_match: false},
+     phrases: [keep my colours, keep my colors, keep the colours, keep the colors, keep original colours, keep original colors, keep the original colours, keep the original colors, "don't change the colours", "don't change the colors", "don't change colours", "don't change colors", dont change the colours, dont change the colors, natural colours, natural colors, no colour grading, no color grading, no colour grade, no color grade, no filter, no filters]}
+  - {label: "match the reference colours", set: {color_match: true},
+     phrases: [match the colours, match the colors, match colours, match colors, colour grade, color grade, same colours as the reference, same colors as the reference, match the look, same look as the reference, warm look, cinematic colours, cinematic colors]}
+  - {label: "caption everyone", set: {caption_speakers: all}, captions: true,
+     phrases: [caption everyone, captions for everyone, caption all voices, everyone's voice, everyones voice, all speakers, all voices]}
+  - {label: "only my voice", set: {caption_speakers: me}, captions: true,
+     phrases: [only my voice, just my voice, only caption me, only me, my voice only, only what i say]}
+  - {label: "keep faces framed", set: {face_follow: true}, phrases: [keep my face in frame, follow my face, keep faces in frame]}
+
+# Words that describe captions anywhere in a sentence that mentions captions/subtitles/text.
+caption_modifiers:
+  - {label: "big captions", set: {caption_scale: 1.4}, phrases: [big, bigger, large, larger, huge, bold]}
+  - {label: "small captions", set: {caption_scale: 0.8}, phrases: [small, smaller, tiny, subtle]}
+  - {label: "captions at the top", set: {caption_position: top}, phrases: [at the top, on top, top of the screen]}
+  - {label: "captions in the middle", set: {caption_position: middle}, phrases: [in the middle, in the center, in the centre, centered, centred]}
+  - {label: "captions at the bottom", set: {caption_position: bottom}, phrases: [at the bottom, bottom of the screen]}

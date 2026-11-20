@@ -420,3 +420,24 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - Tested in the Linux container: install (autostart fallback + launchers), background start, daemon
   restart, `autocut phone` without Tailscale. Windows/macOS paths and Tailscale need the user's
   computer → [ME] checkpoint.
+
+### User request after phase 15 — finish everything, "only my voice", Google Drive, style in words
+- **Only my voice in captions** (`autocut/speakers.py`): SpeechBrain ECAPA-TDNN speaker embeddings per
+  sentence (cached), voice profile auto-learned from the dominant speaker, refined by every voice
+  instruction recorded in the app and by "me / not me" taps in the review screen. Each sentence is
+  assigned to the nearer of "you" vs an "other voices" profile built per file (single fixed
+  threshold fell short on short noisy lines). Test clip: 14 lines yours (narration + short
+  reactions), 18 from a distinct second voice ("Nice to meet you", "You guys"…) — not captioned.
+  `RenderOptions.caption_speakers` = "me" (default) | "all"; applied to burned-in captions + SRT.
+- **Style in words**: parser maps wishes to RenderOptions (`style_options` + `caption_modifiers` in
+  intent.yaml): no/few/more zoom cuts, lowercase/UPPERCASE, big/small, word-by-word/plain,
+  top/middle/bottom, keep/match colours, caption everyone/only my voice. EditSpec gets `options` +
+  `option_labels` (shown in "What I understood"). 2 new intent tests (22 total).
+- **Google Drive drop folder** (`autocut/web/watch.py`): detects Google Drive for desktop folders
+  (Windows `X:\My Drive`, macOS `~/Library/CloudStorage/GoogleDrive-*/My Drive`, `~/Google Drive`),
+  suggests `<Drive>/autocut/<project>`, watches every 10 s; a file is imported (in place, no copy)
+  once its size is unchanged across scans; Drive temp files ignored. "Edit automatically when new
+  videos arrive" makes an edit with the project's instruction when everything is ready and nothing
+  new arrived for 30 s (once per batch). Drive *links* (file or folder via gdown) can be pasted too.
+  Removing an item never deletes files outside the project folder (your Drive stays intact).
+- Voice recognition runs as part of background analysis; model fetched by `autocut models`.
