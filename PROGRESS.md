@@ -5,7 +5,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 ## Phases
 
 - [x] 1. Project skeleton, requirements, CLI (`autocut --help`)
-- [ ] 2. Ingest: hashing, ffprobe metadata, 480p CFR proxies, SQLite, HDR/rotation/VFR handling
+- [x] 2. Ingest: hashing, ffprobe metadata, 480p CFR proxies, SQLite, HDR/rotation/VFR handling
 - [ ] 3. Transcription (faster-whisper, word timestamps, hardware-based model size)
 - [ ] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirm top laughter/energy moments
 - [ ] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
@@ -47,3 +47,20 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   smaller CPU wheel for CPU-only machines.
 - AudioSet class-label CSV is bundled in `autocut/assets/` so PANNs never needs `wget` at runtime
   (it isn't available on Windows).
+
+### Phase 2 — ingest
+- Content hash: full-file SHA-256 (8 MB chunks). `paths` table caches path→hash by size+mtime, so
+  re-running ingest on unchanged files takes ~0.2 s total. Same content at a new path is reused.
+- Proxy: H.264 `veryfast` CRF 26, **short side 480 px**, max 30 fps CFR, 1 keyframe/second (fast web
+  seeking), `+faststart`, stereo AAC 96k, BT.709 tags, metadata stripped (no GPS in proxies).
+- Analysis audio: 32 kHz mono 16-bit WAV (PANNs' native rate; Whisper resamples internally).
+- VFR → CFR: output rate = nearest standard rate to the nominal rate (23.976…60). Audio uses
+  `aresample=async=1000:first_pts=0` so it's padded/stretched against its timestamps — no drift.
+  The same rules (`autocut/media.py`) are reused by the final render on originals.
+- Rotation: FFmpeg auto-rotates on decode; metadata stores `rotation` and `display_width/height`.
+- HDR (HLG/PQ): `zscale` → linear → `tonemap=hable` → BT.709 8-bit. Fallback `colorspace` filter if
+  FFmpeg lacks zimg. Verified with a synthetic 10-bit HLG, rotated, VFR HEVC .MOV test clip.
+- Results on test footage: IMG_0875.MOV (VFR 29.993 → 30 CFR, proxy 854x480, durations match to
+  4 ms); reference_01.mp4 (rotation 90 handled → 1044x480, VFR 46.8 → 30 fps proxy).
+- Noted for phase 6: the reference is a phone screen recording with black pillarbox bars; the style
+  analyzer will auto-crop them (cropdetect) before measuring.

@@ -64,8 +64,49 @@ def status() -> None:
         m = r["meta"]
         stages = ", ".join(sorted({s for s, _ in db.cached_stages(r["hash"])})) or "-"
         t.add_row(r["hash"][:12], Path(r["path"]).name, f"{m.get('duration', 0):.1f}s",
-                  f"{m.get('width')}x{m.get('height')}", stages)
+                  f"{m.get('display_width')}x{m.get('display_height')}", stages)
     console.print(t)
+
+
+@app.command()
+def probe(file: Path = typer.Argument(..., exists=True, dir_okay=False)) -> None:
+    """Print normalised metadata for a media file (codec, rotation, HDR, VFR...)."""
+    from .media import probe as _probe
+
+    console.print_json(json.dumps(_probe(file)))
+
+
+@app.command()
+def ingest(
+    paths: List[Path] = typer.Argument(..., exists=True, help="Files or folders of footage."),
+    force: bool = typer.Option(False, help="Re-ingest even if already cached."),
+) -> None:
+    """Hash, probe and build 480p proxies for footage (skips files already ingested)."""
+    from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
+
+    from .ingest import ingest_file, iter_media
+
+    files = iter_media(paths)
+    if not files:
+        console.print("[yellow]No video files found.[/yellow]")
+        raise typer.Exit(1)
+    with Progress(TextColumn("{task.description}"), BarColumn(), TextColumn("{task.fields[stage]}"),
+                  TimeElapsedColumn(), console=console) as prog:
+        for f in files:
+            task = prog.add_task(f.name, total=1.0, stage="")
+            res = ingest_file(f, force=force,
+                              progress=lambda s, x, t=task: prog.update(t, completed=x, stage=s))
+            prog.update(task, completed=1.0, stage="cached (skipped)" if res.skipped else "ingested")
+            m = res.meta
+            notes = []
+            if m.get("rotation"):
+                notes.append(f"rotated {m['rotation']}°")
+            if m.get("is_hdr"):
+                notes.append(f"HDR {m.get('hdr_format')} → SDR")
+            if m.get("is_vfr"):
+                notes.append(f"VFR {m.get('fps_avg')} → CFR {m.get('fps')}")
+            prog.console.print(f"  {res.hash[:12]}  {m['display_width']}x{m['display_height']} "
+                               f"{m['video_codec']} {m['duration']:.1f}s  {'; '.join(notes)}")
 
 
 def main() -> None:  # pragma: no cover
