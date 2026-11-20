@@ -1,16 +1,26 @@
-"""FastAPI backend. Every route except login requires a valid session."""
+"""FastAPI backend for the phone app. Every /api route except login requires a valid session;
+static files are only the app shell (no user data)."""
 
 from __future__ import annotations
 
 import shutil
 import tempfile
+import time
+import uuid
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import auth
+from . import jobs as J
+from . import projects as P
+from . import uploads as U
+
+STATIC = Path(__file__).parent / "static"
 
 
 def require_user(request: Request) -> None:
@@ -35,8 +45,75 @@ class ParseBody(BaseModel):
     text: str
 
 
+class ProjectBody(BaseModel):
+    name: str = "Untitled project"
+
+
+class ProjectPatch(BaseModel):
+    name: str | None = None
+    instruction: str | None = None
+    options: dict | None = None
+    style: str | None = None
+    context: str | None = None
+
+
+class UploadStart(BaseModel):
+    filename: str
+    size: int
+    kind: str = "footage"
+    fingerprint: str
+
+
+class EditBody(BaseModel):
+    instruction: str
+
+
+def _set_cookie(response: Response, request: Request, token: str) -> None:
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_DAYS * 86400, httponly=True,
+                        samesite="lax", secure=secure, path="/")
+
+
+def _project_or_404(pid: str) -> dict:
+    try:
+        return P.load(pid)
+    except KeyError:
+        raise HTTPException(404, "Project not found.")
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="autocut", docs_url=None, redoc_url=None, openapi_url=None)
+    user = [Depends(require_user)]
+
+    @app.middleware("http")
+    async def no_cache_api(request: Request, call_next):
+        resp = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            resp.headers.setdefault("Cache-Control", "no-store")
+        return resp
+
+    @app.exception_handler(U.UploadError)
+    async def upload_error(_: Request, ex: U.UploadError):
+        body = {"detail": str(ex)}
+        if ex.offset is not None:
+            body["offset"] = ex.offset
+        return JSONResponse(body, status_code=ex.status)
+
+    # ------------------------------------------------------------------ shell / PWA
+    @app.get("/", include_in_schema=False)
+    def index():
+        return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/sw.js", include_in_schema=False)
+    def sw():
+        return FileResponse(STATIC / "sw.js", media_type="text/javascript",
+                            headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def manifest():
+        return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json")
+
+    app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     # ------------------------------------------------------------------ auth
     @app.post("/api/login")
@@ -49,9 +126,7 @@ def create_app() -> FastAPI:
             raise HTTPException(401, "Wrong password.")
         auth.limiter.reset(ip)
         token = auth.make_token()
-        secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
-        response.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_DAYS * 86400, httponly=True,
-                            samesite="lax", secure=secure, path="/")
+        _set_cookie(response, request, token)
         return {"ok": True, "token": token}
 
     @app.post("/api/logout")
@@ -59,11 +134,14 @@ def create_app() -> FastAPI:
         response.delete_cookie(auth.COOKIE, path="/")
         return {"ok": True}
 
-    @app.get("/api/me", dependencies=[Depends(require_user)])
+    @app.get("/api/me", dependencies=user)
     def me():
-        return {"ok": True}
+        from ..hardware import detect
 
-    @app.post("/api/password", dependencies=[Depends(require_user)])
+        hw = detect()
+        return {"ok": True, "busy": J.busy(), "hardware": hw.accelerator}
+
+    @app.post("/api/password", dependencies=user)
     def change_password(body: PasswordBody, response: Response, request: Request):
         if not auth.check_password(body.current):
             raise HTTPException(401, "Current password is wrong.")
@@ -71,20 +149,18 @@ def create_app() -> FastAPI:
             auth.set_password(body.new)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        token = auth.make_token()  # secret rotated: re-issue for this device
-        response.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_DAYS * 86400, httponly=True,
-                            samesite="lax", secure=request.url.scheme == "https", path="/")
+        _set_cookie(response, request, auth.make_token())  # secret rotated: re-issue
         return {"ok": True}
 
     # ------------------------------------------------------------------ instructions
-    @app.post("/api/parse", dependencies=[Depends(require_user)])
+    @app.post("/api/parse", dependencies=user)
     def parse_instruction(body: ParseBody):
         from ..intent import parse
 
         spec = parse(body.text)
         return {"spec": spec.model_dump(), "summary": spec.summary()}
 
-    @app.post("/api/voice", dependencies=[Depends(require_user)])
+    @app.post("/api/voice", dependencies=user)
     async def voice(audio: UploadFile = File(...)):
         """Upload a voice recording → local transcription → EditSpec."""
         from ..editspec import EditSpec
@@ -103,5 +179,149 @@ def create_app() -> FastAPI:
                 raise HTTPException(400, str(e))
         result["summary"] = EditSpec(**result["spec"]).summary()
         return result
+
+    # ------------------------------------------------------------------ styles
+    @app.get("/api/styles", dependencies=user)
+    def styles():
+        from ..style import explain, list_profiles, load_profile
+
+        out = []
+        for n in list_profiles():
+            try:
+                prof = load_profile(n)
+                out.append({"name": n, "references": prof.references, "explanation": explain(prof)})
+            except Exception:
+                continue
+        return out
+
+    # ------------------------------------------------------------------ projects
+    @app.get("/api/projects", dependencies=user)
+    def list_projects():
+        return P.list_all()
+
+    @app.post("/api/projects", dependencies=user)
+    def create_project(body: ProjectBody):
+        return P.create(body.name)
+
+    @app.get("/api/projects/{pid}", dependencies=user)
+    def get_project(pid: str):
+        p = _project_or_404(pid)
+        p["jobs"] = [j for j in J.for_project(pid) if j["status"] in ("queued", "running")
+                     or (j["finished"] and time.time() - j["finished"] < 120)]
+        return p
+
+    @app.patch("/api/projects/{pid}", dependencies=user)
+    def patch_project(pid: str, body: ProjectPatch):
+        from ..options import RenderOptions
+
+        _project_or_404(pid)
+
+        def fn(p):
+            if body.name is not None:
+                p["name"] = body.name.strip()[:80] or p["name"]
+            if body.instruction is not None:
+                p["instruction"] = body.instruction[:2000]
+            if body.context is not None:
+                p["context"] = body.context[:4000]
+            if body.style is not None:
+                p["style"] = body.style or None
+            if body.options is not None:
+                try:
+                    p["options"] = RenderOptions(**{**p.get("options", {}), **body.options}).model_dump()
+                except Exception as e:
+                    raise HTTPException(400, f"Bad setting: {e}")
+        return P.update(pid, fn)
+
+    @app.delete("/api/projects/{pid}", dependencies=user)
+    def delete_project(pid: str):
+        _project_or_404(pid)
+        P.delete(pid)
+        return {"ok": True}
+
+    @app.delete("/api/projects/{pid}/items/{item_id}", dependencies=user)
+    def delete_item(pid: str, item_id: str):
+        p = _project_or_404(pid)
+        found = P.find_item(p, item_id)
+        if not found:
+            raise HTTPException(404, "Not found.")
+        kind, it = found
+
+        def fn(q):
+            q[kind] = [x for x in q[kind] if x["id"] != item_id]
+        P.update(pid, fn)
+        Path(it["path"]).unlink(missing_ok=True)
+        if kind == "refs":
+            if P.load(pid)["refs"]:
+                J.queue_style(pid)
+            else:
+                P.update(pid, lambda q: q.update(style=None, style_explained=None))
+        return {"ok": True}
+
+    @app.post("/api/projects/{pid}/items/{item_id}/retry", dependencies=user)
+    def retry_item(pid: str, item_id: str):
+        p = _project_or_404(pid)
+        if not P.find_item(p, item_id):
+            raise HTTPException(404, "Not found.")
+        return J.queue_analyze(pid, item_id)
+
+    # ------------------------------------------------------------------ uploads
+    @app.post("/api/projects/{pid}/uploads", dependencies=user)
+    def start_upload(pid: str, body: UploadStart):
+        _project_or_404(pid)
+        return U.start(pid, body.filename, body.size, body.kind, body.fingerprint)
+
+    @app.get("/api/uploads/{uid}", dependencies=user)
+    def upload_status(uid: str):
+        return U.status(uid)
+
+    @app.put("/api/uploads/{uid}", dependencies=user)
+    async def upload_chunk(uid: str, offset: int, request: Request):
+        return await U.append(uid, offset, request.stream())
+
+    # ------------------------------------------------------------------ edits
+    @app.post("/api/projects/{pid}/edits", dependencies=user)
+    def make_edit(pid: str, body: EditBody):
+        p = _project_or_404(pid)
+        if not any(f.get("status") == "ready" for f in p["footage"]):
+            raise HTTPException(400, "Add some footage first and wait until it says “ready”.")
+        e = {"id": uuid.uuid4().hex[:10], "created": time.time(), "instruction": body.instruction,
+             "status": "queued"}
+
+        def fn(q):
+            q["edits"].append(e)
+            q["instruction"] = body.instruction
+        P.update(pid, fn)
+        J.queue_edit(pid, e["id"])
+        return e
+
+    @app.delete("/api/projects/{pid}/edits/{eid}", dependencies=user)
+    def delete_edit(pid: str, eid: str):
+        _project_or_404(pid)
+        P.update(pid, lambda q: q.update(edits=[x for x in q["edits"] if x["id"] != eid]))
+        shutil.rmtree(P.project_dir(pid) / "edits" / eid, ignore_errors=True)
+        return {"ok": True}
+
+    @app.get("/api/projects/{pid}/edits/{eid}/video", dependencies=user)
+    def edit_video(pid: str, eid: str, quality: str = "preview", download: int = 0):
+        p = _project_or_404(pid)
+        e = P.find_edit(p, eid)
+        if not e or e.get("status") != "done":
+            raise HTTPException(404, "Not ready yet.")
+        path = Path(e["preview"] if quality == "preview" and e.get("preview") else e["video"])
+        if not path.exists():
+            raise HTTPException(404, "File missing.")
+        name = f"{p['name']}_{eid}.mp4".replace(" ", "_")
+        return FileResponse(path, media_type="video/mp4",
+                            filename=name if download else None,
+                            content_disposition_type="attachment" if download else "inline")
+
+    @app.post("/api/projects/{pid}/edits/{eid}/render", dependencies=user)
+    def rerender(pid: str, eid: str):
+        p = _project_or_404(pid)
+        e = P.find_edit(p, eid)
+        if not e or not e.get("selection"):
+            raise HTTPException(404, "Not found.")
+        J._set_edit(pid, eid, status="queued")  # noqa: SLF001
+        return J.queue_render(pid, eid)
 
     return app

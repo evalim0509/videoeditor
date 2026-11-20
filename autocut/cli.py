@@ -530,6 +530,40 @@ def run(
     console.print(f"[dim]{time.time() - t0:.0f}s total[/dim]")
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", help="0.0.0.0 = reachable from your phone on the same network."),
+    port: int = typer.Option(8765),
+) -> None:
+    """Start the phone/web app (login required)."""
+    import socket
+
+    import uvicorn
+
+    from .web import jobs
+    from .web.app import create_app
+    from .web.auth import ensure_password
+
+    phrase = ensure_password()
+    if phrase:
+        console.print(f"\n[bold]First login password:[/bold] [green]{phrase}[/green]  "
+                      "(also saved in data/FIRST_LOGIN.txt — change it in the app)\n")
+    n = jobs.resume_unfinished()
+    if n:
+        console.print(f"Resumed {n} unfinished job(s).")
+    jobs.ensure_worker()
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        lan = s.getsockname()[0]
+        s.close()
+    except OSError:
+        lan = "localhost"
+    console.print(f"autocut is running:  this computer → http://localhost:{port}   "
+                  f"phone on the same Wi-Fi → http://{lan}:{port}")
+    uvicorn.run(create_app(), host=host, port=port, log_level="warning", timeout_keep_alive=30)
+
+
 def _ts(s: str) -> float:
     """'1:43.5' or '103.5' → seconds."""
     if ":" in s:

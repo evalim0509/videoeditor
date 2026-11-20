@@ -16,7 +16,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
 - [x] 11. Style matching — **[ME]** approved by user after feedback 3–4
 - [x] 12. `autocut run` one-command pipeline
-- [ ] 13. Mobile-first web app / PWA
+- [x] 13. Mobile-first web app / PWA
 - [ ] 14. Review screen
 - [ ] 15. FCPXML + EDL export
 - [ ] 16. Phone access via Wi-Fi + Tailscale HTTPS — **[ME]** phone walkthrough
@@ -320,3 +320,37 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   versions' clips (×0.6). Test: "funny 30 second vlog with captions, 2 versions" → v1 31.1 s / v2
   32.1 s, **0 s overlap**, 117 s total (analysis cached).
 - Progress callback (stage text + 0..1) used by the CLI progress bar and, next, by web jobs.
+
+### Phase 13 — mobile-first web app
+- `autocut serve [--host 0.0.0.0 --port 8765]`: prints the LAN address; generates the first-login
+  passphrase if none; resumes unfinished jobs; one background worker thread.
+- Backend (`autocut/web/`): `projects.py` (folder + project.json per project), `uploads.py`
+  (chunked resumable protocol: POST start → PUT ?offset=N raw chunks → 409 with server offset on
+  mismatch; same fingerprint resumes; 64 MB max chunk; extension whitelist), `jobs.py` (analyze /
+  ref / style / edit / render jobs, live stage + progress, errors reported to the phone, mirrored
+  into project.json, re-queued after restart), `app.py` (all /api routes need login; video served
+  with HTTP Range for streaming; `download=1` → attachment).
+- Edits run `pipeline.run()` with the project's footage, style and **saved settings as base**
+  (explicit instruction requests on top). Extra versions become separate edits.
+- Frontend (`autocut/web/static/`, vanilla JS, no build): login, projects list, project screen
+  (footage / style / instruction / settings / edits), sticky "Make my edit" bar, toasts, bottom
+  sheets, light/dark. Upload manager: 4 MB chunks, one at a time, infinite retry with backoff
+  while offline ("reconnecting"), top-bar progress pill, wake lock, warns before closing; keeps
+  running while you move between screens (SPA). Polling 2 s while busy / 8 s idle, paused when
+  the tab is hidden and refreshed on return → lock the phone, come back, see progress.
+  "Your edit is ready" toast + vibration (+ system notification where allowed).
+- Hold-to-talk: MediaRecorder (webm/opus or mp4/aac), hold to record / release to send, or tap to
+  start + tap to stop; disabled with an explanation on non-HTTPS origins (fixed in phase 16).
+- "What I understood" panel: live /api/parse while typing; voice shows "I heard: …".
+- Settings panel for every RenderOptions field (shape, captions, caption style/case/size/position,
+  zoom cuts + spacing, colour match, face follow, loudness), saved per project.
+- PWA: manifest (standalone, icons incl. maskable + apple-touch-icon), service worker caching only
+  the shell (never API/video).
+- Verified with Playwright (iPhone 13 + Pixel 7 emulation, and 1280 px desktop): wrong password
+  rejected, login, create project, upload 174 MB footage + reference via the chunked uploader,
+  footage ready, style explained, instruction understood, lowercase caption setting applied, edit
+  rendered (~55 s), preview plays (960x540), full-quality download = 206 partial + attachment;
+  hold-to-talk records with a fake mic and the server answers "didn't hear an instruction".
+  Bug found & fixed: `.icon-btn{display:grid}` overrode the `hidden` attribute.
+- Tests: `tests/test_web_app.py` (public shell vs protected data, CRUD + settings validation,
+  resumable upload incl. resume, 409 re-sync, 415, auto-queued analysis).

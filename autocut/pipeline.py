@@ -34,7 +34,10 @@ def preset_for_refs(ref_hashes: list[str], name: str | None = None) -> str:
 
 def run(footage: list[Path], instruction: str, *, refs: list[Path] | None = None,
         style_name: str | None = None, out_dir: Path = Path("output"), name: str | None = None,
-        option_overrides: dict | None = None, progress: Progress | None = None) -> dict:
+        option_overrides: dict | None = None, base_options: dict | None = None,
+        progress: Progress | None = None) -> dict:
+    """`base_options`: saved settings (e.g. the project's) — the instruction's explicit requests
+    (like "vertical" or "no captions") are applied on top; `option_overrides` win over both."""
     from .intent import parse
     from .options import RenderOptions
     from .select import select_clips
@@ -88,7 +91,7 @@ def run(footage: list[Path], instruction: str, *, refs: list[Path] | None = None
         span = 0.35 / spec.versions
         prog(f"choosing the best moments{f' (version {v + 1})' if spec.versions > 1 else ''}", lo)
         sel = select_clips(hashes, spec, style=profile, avoid=used or None)
-        opts = RenderOptions.from_spec(spec)
+        opts = RenderOptions.from_spec(spec, base=RenderOptions(**base_options) if base_options else None)
         for k, val in (option_overrides or {}).items():
             setattr(opts, k, val)
         sel["options"] = opts.model_dump()
