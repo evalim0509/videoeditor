@@ -498,6 +498,38 @@ def render(
         console.print(f"Phone preview: {info['preview']}")
 
 
+@app.command()
+def run(
+    instruction: str = typer.Argument(..., help='e.g. "funny 60 second vlog with captions"'),
+    footage: List[Path] = typer.Option(..., "--footage", "-f", exists=True, help="Footage files/folders."),
+    refs: Optional[List[Path]] = typer.Option(None, "--refs", "-r", exists=True,
+                                              help="Reference videos/folders for the style."),
+    style_name: Optional[str] = typer.Option(None, "--style", help="Saved preset (or name for the new one)."),
+    out_dir: Path = typer.Option(Path("output"), "--out-dir", "-o"),
+    name: Optional[str] = typer.Option(None, help="Output file name (default: from the instruction)."),
+) -> None:
+    """Everything in one go: footage + references + instruction → finished edit(s)."""
+    import time
+
+    from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
+
+    from .pipeline import run as _run
+
+    t0 = time.time()
+    with Progress(TextColumn("{task.fields[stage]}"), BarColumn(), TimeElapsedColumn(),
+                  console=console) as prog:
+        task = prog.add_task("run", total=1.0, stage="starting")
+        res = _run(footage, instruction, refs=refs, style_name=style_name, out_dir=out_dir,
+                   name=name, progress=lambda s, x: prog.update(task, completed=x, stage=s))
+    console.print(f"[bold]Understood:[/bold] {res['summary']}   style: {res['style'] or 'none'}")
+    for w in res["warnings"]:
+        console.print(f"[yellow]⚠ {w}[/yellow]")
+    for o in res["outputs"]:
+        console.print(f"✓ {o['video']}  ({o['duration']:.1f}s, {o['clips']} clips)  "
+                      f"edit list: {o['selection']}")
+    console.print(f"[dim]{time.time() - t0:.0f}s total[/dim]")
+
+
 def _ts(s: str) -> float:
     """'1:43.5' or '103.5' → seconds."""
     if ":" in s:

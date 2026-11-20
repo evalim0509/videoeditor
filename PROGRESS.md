@@ -14,8 +14,8 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 8. Voice input (server endpoint + CLI)
 - [x] 9. Clip selector — **[ME]** confirmed by user, weights tuned from feedback
 - [x] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
-- [ ] 11. Style matching — **[ME]** watch the output  ← re-rendered from feedback 3, waiting for user
-- [ ] 12. `autocut run` one-command pipeline
+- [x] 11. Style matching — **[ME]** approved by user after feedback 3–4
+- [x] 12. `autocut run` one-command pipeline
 - [ ] 13. Mobile-first web app / PWA
 - [ ] 14. Review screen
 - [ ] 15. FCPXML + EDL export
@@ -309,3 +309,14 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   clamped 4–10 s (→ 4.1 s for paris_vlog); new editable `RenderOptions.punch_in_spacing`
   (`--punch-in-spacing`), plus `--no-punch-ins`. Funny-60 vlog: 18 → 4 zoom cuts (zoomed at
   0:04–0:07, 0:10–0:15, 0:38–0:41 of the edit). Preference recorded in CLAUDE.md.
+
+### Phase 12 — one command
+- `autocut run --footage F --refs R "instruction" [--style NAME] [--out-dir output] [--name X]`
+  → `pipeline.run()`: ingest footage → ingest references + StyleProfile (stable auto name
+  `refs_<sha1 of ref hashes>`, reused if already analysed) → parse instruction to EditSpec →
+  analyse (cached) → select → render styled. Writes `<name>.mp4`, `<name>.preview.mp4` and the
+  editable edit list `<name>.json` (spec, options, clips, runner-ups).
+- Multiple versions ("2 versions"): each later version scores down candidates overlapping earlier
+  versions' clips (×0.6). Test: "funny 30 second vlog with captions, 2 versions" → v1 31.1 s / v2
+  32.1 s, **0 s overlap**, 117 s total (analysis cached).
+- Progress callback (stage text + 0..1) used by the CLI progress bar and, next, by web jobs.

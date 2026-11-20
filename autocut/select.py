@@ -399,7 +399,10 @@ def preset_length_range(style, mood_range: list[float]) -> list[float]:
     return [a, b] if b - a >= 2.0 else [lo, hi]
 
 
-def select_clips(hashes: list[str], spec: EditSpec, n_runner_ups: int = 10, style=None) -> dict:
+def select_clips(hashes: list[str], spec: EditSpec, n_runner_ups: int = 10, style=None,
+                 avoid: list[dict] | None = None, avoid_penalty: float = 0.6) -> dict:
+    """`avoid`: clips from earlier versions — overlapping candidates are scored down so extra
+    versions show different moments."""
     cfg = load_config()
     mood = spec.mood if spec.mood in cfg["moods"] else "auto"
     mood_cfg = dict(cfg["moods"][mood])
@@ -424,6 +427,10 @@ def select_clips(hashes: list[str], spec: EditSpec, n_runner_ups: int = 10, styl
             f.pop("_kw_hits", None)
             c.features = {**f, "contrib": {k: round(v, 3) for k, v in contrib.items()}}
             cands.append(c)
+    if avoid:
+        for c in cands:
+            if any(a["hash"] == c.hash and a["start"] < c.end and c.start < a["end"] for a in avoid):
+                c.score = round(c.score * avoid_penalty, 4)
     cands.sort(key=lambda c: -c.score)
 
     chosen: list[Clip] = []
