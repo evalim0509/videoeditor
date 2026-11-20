@@ -1,0 +1,12 @@
+# Virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Media files: keep the folders, not the (large) videos
+test_footage/*
+references/*
+output/*
+!test_footage/.gitkeep
+!references/.gitkeep
+!output/.gitkeep
