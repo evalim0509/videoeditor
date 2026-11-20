@@ -303,3 +303,9 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
     caption editor, context box).
 - Re-render (funny 60 second vlog with captions): 1920x1080, 63.23 s, same 11 approved clips,
   plain captions, colour diff vs original 0.9/255 (encoding noise only), -14.1 LUFS.
+
+#### [ME] feedback 4 (phase 11)
+- User: zoom cuts too frequent. Auto spacing changed from preset median·1.8 (2.2 s) to median·3.3,
+  clamped 4–10 s (→ 4.1 s for paris_vlog); new editable `RenderOptions.punch_in_spacing`
+  (`--punch-in-spacing`), plus `--no-punch-ins`. Funny-60 vlog: 18 → 4 zoom cuts (zoomed at
+  0:04–0:07, 0:10–0:15, 0:38–0:41 of the edit). Preference recorded in CLAUDE.md.
