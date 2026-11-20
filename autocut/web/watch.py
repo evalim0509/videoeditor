@@ -22,9 +22,9 @@ from ..config import VIDEO_EXTS
 from . import jobs as J
 from . import projects as P
 
-SCAN_EVERY = 10.0       # seconds
+SCAN_EVERY = float(os.environ.get("AUTOCUT_WATCH_SECONDS", "10"))        # seconds between checks
 STABLE_FOR = 2          # unchanged size on this many scans in a row = finished syncing
-QUIET_BEFORE_EDIT = 30  # seconds without new files before an automatic edit starts
+QUIET_BEFORE_EDIT = float(os.environ.get("AUTOCUT_QUIET_SECONDS", "30"))  # no new files for this long
 SKIP = re.compile(r"(^\.|^~\$|\.(tmp|part|crdownload|download|gdoc|ini)$)", re.I)
 
 _seen: dict[str, dict[str, tuple[int, float, int]]] = {}

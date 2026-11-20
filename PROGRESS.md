@@ -19,8 +19,8 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 13. Mobile-first web app / PWA
 - [x] 14. Review screen
 - [x] 15. FCPXML + EDL export
-- [ ] 16. Phone access via Wi-Fi + Tailscale HTTPS — **[ME]** phone walkthrough
-- [ ] 17. Auto-start, launcher, desktop shortcut
+- [x] 16. Phone access via Wi-Fi + Tailscale HTTPS — built & tested in the container; runs on the user's computer after the double-click install
+- [x] 17. Auto-start, launcher, desktop shortcut — built & tested (Linux); Windows/macOS variants run during install
 
 ## Environment notes
 
@@ -441,3 +441,20 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   new arrived for 30 s (once per batch). Drive *links* (file or folder via gdown) can be pasted too.
   Removing an item never deletes files outside the project folder (your Drive stays intact).
 - Voice recognition runs as part of background analysis; model fetched by `autocut models`.
+
+### Final end-to-end demo (end product)
+- Server started like on the user's computer; a stand-in for Google Drive for desktop at
+  `~/Google Drive` (auto-detected). Playwright (iPhone 13) recorded the whole flow: login → new
+  project → reference video uploaded → style learned → "Use folder autocut/Airport lunch vlog" →
+  "Edit automatically when new videos arrive" → typed "funny 60 second vlog with captions, lowercase
+  captions, keep my colours" (understood incl. style wishes) → video dropped into the Drive folder →
+  imported in ~6 s → **automatic edit** started and finished (~2 min, 59.5 s, 16:9, colours
+  untouched) → review: caption sheet shows the other voice's lines as "not me" → removed a clip →
+  re-render → export sheet. No page errors.
+- Captions in the automatic edit: only the user's lines, lowercase (e.g. "is that chili oil?",
+  "yeah, it is. do you want some?"); the second voice ("nice to meet you", "you guys") excluded.
+- Demo video: `output/autocut_app_demo.mp4` (static waiting compressed). Watch interval/quiet time
+  can be shortened with `AUTOCUT_WATCH_SECONDS` / `AUTOCUT_QUIET_SECONDS` (defaults 10 s / 30 s).
+- Install on the user's computer: download the branch ZIP → double-click `INSTALL-Windows.bat` /
+  `INSTALL-Mac.command` (setup script installs everything, models, auto-start, desktop icon, Tailscale
+  HTTPS, prints first password + phone address).
