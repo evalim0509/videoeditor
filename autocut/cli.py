@@ -433,8 +433,17 @@ def render(
     preview: bool = typer.Option(True, help="Also write a 540p phone preview."),
     style_name: Optional[str] = typer.Option(None, "--style", help="Style preset to match."),
     plain: bool = typer.Option(False, help="No style matching: just cut, crossfade, normalise."),
+    aspect: Optional[str] = typer.Option(None, help='"source", "16:9", "9:16", "1:1" or "4:5".'),
+    captions: Optional[bool] = typer.Option(None, "--captions/--no-captions"),
+    caption_style: Optional[str] = typer.Option(None, help='"static" (whole line) or "karaoke".'),
+    caption_case: Optional[str] = typer.Option(None, help='"original", "lower" or "upper".'),
+    caption_scale: Optional[float] = typer.Option(None, help="Caption size multiplier, e.g. 1.3"),
+    caption_position: Optional[str] = typer.Option(None, help='"auto", "bottom", "middle", "top".'),
+    punch_ins: Optional[bool] = typer.Option(None, "--punch-ins/--no-punch-ins"),
+    color_match: Optional[bool] = typer.Option(None, "--color-match/--no-color-match"),
 ) -> None:
-    """Render a selection from the originals, matched to a style (crop, captions, pacing, colour)."""
+    """Render a selection from the originals, matched to a style. Every setting can be overridden
+    and the choice is saved back into the selection file."""
     import time
 
     from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
@@ -444,8 +453,24 @@ def render(
     from .style import load_profile
     from .stylematch import render_styled
 
+    from .options import RenderOptions
+
     sel = json.loads(selection.read_text())
     spec = EditSpec(**sel.get("spec", {}))
+    opts = RenderOptions(**sel["options"]) if sel.get("options") else RenderOptions.from_spec(spec)
+    overrides = {"aspect": (None if aspect == "source" else aspect) if aspect else ...,
+                 "captions": captions, "caption_style": caption_style, "caption_case": caption_case,
+                 "caption_scale": caption_scale, "caption_position": caption_position,
+                 "punch_ins": punch_ins, "color_match": color_match}
+    for k, v in overrides.items():
+        if v is not None and v is not ...:
+            setattr(opts, k, v)
+        elif k == "aspect" and v is None:
+            opts.aspect = None
+    sel["options"] = opts.model_dump()
+    if style_name:
+        sel["style"] = style_name
+    selection.write_text(json.dumps(sel, indent=2))  # remember manual choices
     name = style_name or spec.style_preset or sel.get("style")
     prof = load_profile(name) if name else None
     t0 = time.time()
@@ -456,7 +481,8 @@ def render(
         if plain:
             info = render_timeline(clips_from_selection(sel), out, preview=preview, progress=cb)
         else:
-            info = render_styled(sel, out, spec=spec, profile=prof, preview=preview, progress=cb)
+            info = render_styled(sel, out, spec=spec, profile=prof, options=opts, preview=preview,
+                                 progress=cb)
     console.print(f"Rendered [bold]{info['output']}[/bold]: {info['duration']:.2f}s, "
                   f"{info['size'][0]}x{info['size'][1]} @ {info['fps']} fps, "
                   f"{len(info['clip_frames'])} clips, loudness {measure_lufs(Path(info['output'])):.1f} LUFS "
@@ -464,9 +490,80 @@ def render(
     if not plain:
         console.print(f"Style: {info.get('style') or 'none'} · aspect {info['aspect']} · "
                       f"{info['segments']} shots ({info['punch_ins']} punch-in cuts) · "
-                      f"{info['captions']} caption lines · colour matched: {info['color_matched']}")
+                      f"{info['captions']} caption lines ({opts.caption_style}) · "
+                      f"colour changed: {info['color_matched']}")
     if info["preview"]:
         console.print(f"Phone preview: {info['preview']}")
+
+
+def _ts(s: str) -> float:
+    """'1:43.5' or '103.5' → seconds."""
+    if ":" in s:
+        m, sec = s.split(":", 1)
+        return int(m) * 60 + float(sec)
+    return float(s)
+
+
+@app.command()
+def correct(
+    file: str = typer.Argument(..., help="File path or hash prefix."),
+    text: Optional[str] = typer.Argument(None, help="What was actually said."),
+    start: Optional[str] = typer.Option(None, "--from", help="Start time, e.g. 1:41.6"),
+    end: Optional[str] = typer.Option(None, "--to", help="End time, e.g. 1:44.6"),
+    find: Optional[str] = typer.Option(None, help="Phrase to find instead of giving times."),
+    relisten_: bool = typer.Option(False, "--relisten", help="Re-transcribe that moment instead "
+                                   "(TEXT, if given, is used as a hint)."),
+    list_: bool = typer.Option(False, "--list", help="Show saved corrections."),
+    undo: Optional[str] = typer.Option(None, help="Remove a correction by id ('all' for every one)."),
+) -> None:
+    """Fix the transcript/captions yourself: replace words, find & replace, or re-listen a moment."""
+    from . import corrections as C
+
+    m = _resolve(file)
+    h = m["hash"]
+    if list_:
+        for e in C.get_edits(h):
+            console.print(f"{e['id']}  {e['start']:.2f}–{e['end']:.2f}  ({e['source']})  “{e['text']}”",
+                          markup=False)
+        return
+    if undo:
+        n = C.clear_edits(h, None if undo == "all" else undo)
+        console.print(f"Removed {n} correction(s).")
+        return
+    if find and not relisten_:
+        e = C.find_replace(h, find, text or "")
+        if not e:
+            console.print(f"[red]Couldn't find “{find}” in the transcript.[/red]")
+            raise typer.Exit(1)
+    elif start is not None and end is not None:
+        e = (C.relisten(h, _ts(start), _ts(end), hint=text) if relisten_
+             else C.correct_text(h, _ts(start), _ts(end), text or ""))
+    elif find and relisten_:
+        hit = C.find_phrase(h, find)
+        if not hit:
+            raise typer.Exit(1)
+        e = C.relisten(h, hit[0], hit[1], hint=text)
+    else:
+        console.print("[red]Give --from/--to times or --find PHRASE.[/red]")
+        raise typer.Exit(1)
+    console.print(f"Saved {e['id']} ({e['source']}): {e['start']:.2f}–{e['end']:.2f} → “{e['text']}”")
+
+
+@app.command()
+def context(
+    file: str = typer.Argument(..., help="File path or hash prefix."),
+    text: str = typer.Argument(..., help='e.g. \'At 1:43 I said "you want some?"; my friend is Mia\''),
+) -> None:
+    """Give context so autocut can fix its own transcript (quoted phrases, names, places)."""
+    from .corrections import apply_context
+
+    m = _resolve(file)
+    with console.status("re-listening with your context…"):
+        changes = apply_context(m["hash"], text)
+    if not changes:
+        console.print("Nothing needed changing.")
+    for e in changes:
+        console.print(f"{e['start']:.2f}–{e['end']:.2f} ({e['source']}) → “{e['text']}”", markup=False)
 
 
 def main() -> None:  # pragma: no cover

@@ -22,6 +22,7 @@ platforms:          # aspect ratio + typical length when none is given
   shorts:   {aliases: [shorts, youtube short, youtube shorts, yt short], aspect: "9:16", duration: 45}
   story:    {aliases: [story, stories, instagram story, ig story], aspect: "9:16", duration: 15}
   youtube:  {aliases: [youtube, yt, youtube video], aspect: "16:9", duration: null}
+  vlog:     {aliases: [vlog style, vlog, vlogs, vlogging, travel vlog, daily vlog], aspect: null, duration: null}
   instagram: {aliases: [instagram post, ig post, insta post, feed post, instagram, insta, ig], aspect: "4:5", duration: 30}
 
 aspects:
@@ -109,5 +110,5 @@ filler: [a, an, the, and, or, of, for, to, me, my, i, it, its, it's, make, creat
          roughly, approximately, max, maximum, under, less, than, at, most, over, more, only, s,
          m, ok, okay, hey, so, some, any, type, style, kinda, vibe, format, ratio, aspect, post,
          thanks, thank, by, as, also, plus, then, now, here, there, today, yesterday,
-         vlog, vlogs, videos, done, add, have, has, do, turn, version,
+         videos, done, add, have, has, do, turn, version,
          short-form, shortform, social, media, platform, content]

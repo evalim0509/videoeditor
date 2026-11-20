@@ -14,7 +14,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 8. Voice input (server endpoint + CLI)
 - [x] 9. Clip selector — **[ME]** confirmed by user, weights tuned from feedback
 - [x] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
-- [ ] 11. Style matching — **[ME]** watch the output  ← built & verified, waiting for user to watch
+- [ ] 11. Style matching — **[ME]** watch the output  ← re-rendered from feedback 3, waiting for user
 - [ ] 12. `autocut run` one-command pipeline
 - [ ] 13. Mobile-first web app / PWA
 - [ ] 14. Review screen
@@ -278,3 +278,28 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - Captions default: EditSpec `captions` if given, else the preset's `captions_present`.
 - Output (funny 60 second tiktok with captions, paris_vlog): 1080x1920, 63.27 s, 1898 frames,
   A/V equal, -14.1 LUFS, 28 caption lines, 130 s render on 4 cores. 16:9 path verified too.
+
+#### [ME] feedback 3 (phase 11)
+- User: no word-by-word highlight; keep the original horizontal ratio (vlog style, not TikTok);
+  "Ywansuk" caption is wrong ("you want some?"); don't change the colour; and in the app everything
+  must be changeable manually later, or adjustable by telling the app some context.
+- Changes:
+  - `RenderOptions` (`autocut/options.py`): aspect (None = source), captions, caption_style
+    (static default / karaoke), caption_case, caption_scale, caption_position, punch_ins,
+    face_follow, color_match (**off by default**), beat_sync, loudness. Stored in the selection JSON
+    as `options`; `autocut render` flags override and are saved back.
+  - Aspect now defaults to the footage's own shape; only an explicit request (e.g. "tiktok",
+    "vertical") crops. New "vlog" platform word = keep source shape.
+  - **Transcript corrections** (`autocut/corrections.py`, SQLite `transcript_edits`): manual
+    replace by time range or fuzzy find & replace; re-listen a moment (short window, 2 s audio
+    context — found to fix the error even without a hint); **context** — quoted phrases paired with
+    the nearest time mentioned are re-listened in their sentence with the quote as hint (trying 2 /
+    3 / 1.5 / 4 s of context), falling back to writing the user's words; extra general context
+    (names/places) re-listens unclear sentences with it as a prompt. `effective_transcript()` feeds
+    captions and the selector. CLI: `autocut correct`, `autocut context`.
+  - Applied `autocut context IMG_0875.MOV 'At 1:43 I said "you want some?"'` → "Yeah, it is. Do you
+    want some?" (Whisper consistently hears the "Do"; left as heard, editable).
+  - Added rule 9 + user preferences to CLAUDE.md; phase 13/14 scope extended (settings panel,
+    caption editor, context box).
+- Re-render (funny 60 second vlog with captions): 1920x1080, 63.23 s, same 11 approved clips,
+  plain captions, colour diff vs original 0.9/255 (encoding noise only), -14.1 LUFS.

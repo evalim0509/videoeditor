@@ -82,7 +82,10 @@ class FileAnalysis:
         self.media = db.get_media(file_hash)
         self.file = Path(self.media["path"]).name
         self.duration = float(self.media["meta"]["duration"])
-        self.transcript = transcribe(file_hash)
+        from .corrections import effective_transcript
+
+        transcribe(file_hash)  # make sure the base transcript exists (cached)
+        self.transcript = effective_transcript(file_hash)  # + the user's corrections
         self.words = self.transcript["words"]
         self.sentences = self.transcript["sentences"]
         au = audio_analyze(file_hash)
@@ -476,8 +479,11 @@ def select_clips(hashes: list[str], spec: EditSpec, n_runner_ups: int = 10, styl
         for c in chosen:
             if c.hash == fa.hash:
                 assert fa.is_safe(c.start) and fa.is_safe(c.end), f"mid-word cut in {c}"
+    from .options import RenderOptions
+
     return {
         "spec": spec.model_dump(),
+        "options": RenderOptions.from_spec(spec).model_dump(),
         "mood_used": mood,
         "preferred_length": mood_cfg.get("preferred_length"),
         "style": style.name if style is not None else None,

@@ -20,6 +20,8 @@ the processing; the phone is just the interface.
 - The web interface is mobile-first: it must work well on a phone screen with touch, then scale up
   to desktop.
 - The app must require a login (password) because it is reachable over the network.
+- Everything automatic must be changeable afterwards — manually in the app, or by telling the app
+  some context so it adjusts itself (added by the user at checkpoint 3).
 
 ## How we work
 
@@ -102,7 +104,10 @@ Module per stage (`autocut/<stage>.py`), each with its own `autocut <command>`:
     across screens; style preset picker; instruction box with hold-to-talk mic (browser recording →
     server-side local transcription); EditSpec + warnings panel; background processing with live
     progress and in-app "done" notification; streaming lightweight preview player + full-quality
-    download; works on desktop too.
+    download; works on desktop too. **Settings panel for every render option** (aspect, captions
+    on/off, caption style/case/size/position, punch-ins, colour matching, face-follow, loudness).
+    **Transcript/caption editor**: tap a caption line to retype it, re-listen a moment, or give
+    context ("at 1:43 I said 'you want some?'", names, places) so the app fixes it itself.
 14. Review screen (touch-friendly): clip cards with thumbnail, timestamps and reason; tap to preview;
     swipe or tap to remove; "swap" for next-best candidate; move up/down buttons; add from 10
     runner-ups; trim start/end with +/- buttons; render. Log keep/remove decisions.

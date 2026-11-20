@@ -19,6 +19,17 @@ computer does all processing.
 7. **The web interface is mobile-first**: it must work well on a phone screen with touch, then scale
    up to desktop.
 8. **The app requires a password login**, because it is reachable over the network.
+9. **Everything automatic must be changeable by the user afterwards** — manually in the app (clips,
+   trims, order, caption text, captions on/off and style, aspect, colour, punch-ins…) or by giving
+   the app context it can act on. Decisions are stored as editable data (`RenderOptions`, the clip
+   list, transcript corrections), never baked in.
+
+## User preferences (defaults)
+
+- Vlog style, not TikTok style: keep the footage's original (horizontal) aspect ratio unless the
+  instruction explicitly asks for another shape.
+- Captions are plain lines that appear whole — no word-by-word highlighting.
+- Don't change the colour unless asked (colour matching is opt-in).
 
 ## How to work
 

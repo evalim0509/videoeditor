@@ -67,5 +67,11 @@ def test_captions_word_timed(tmp_home, tmp_path):
     assert n == 2 and "PlayResY: 1920" in text
     lines = [l for l in text.splitlines() if l.startswith("Dialogue")]
     assert re.sub(r"\{[^}]*\}", "", lines[0].split(",", 9)[9]) == "Is that chili oil?"
-    assert "\\kf" in lines[0]
+    assert "\\kf" not in lines[0]                  # default: plain line, no word highlight
     assert lines[0].split(",")[1] == "0:00:00.50"   # 1.0 s source → 0.5 s on the output timeline
+    from autocut.options import RenderOptions
+
+    build_captions(segs, 30.0, (1080, 1920), None, out,
+                   options=RenderOptions(caption_style="karaoke", caption_case="lower"))
+    k = [l for l in out.read_text().splitlines() if l.startswith("Dialogue")][0]
+    assert "\\kf" in k and "is that chili oil?" in re.sub(r"\{[^}]*\}", "", k)

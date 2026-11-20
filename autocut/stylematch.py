@@ -260,21 +260,32 @@ def _ass_time(t: float) -> str:
 
 def build_captions(segments: list[Segment], fps: float, size: tuple[int, int],
                    profile: StyleProfile | None, path: Path, max_words: int = 6,
-                   max_len: float = 3.5, max_gap: float = 0.9, max_chars: int = 30) -> int:
+                   max_len: float = 3.5, max_gap: float = 0.9, max_chars: int = 30,
+                   options=None) -> int:
     """Word-timed karaoke captions on the output timeline. Returns the number of caption events."""
-    from .transcribe import get_transcript
+    from .corrections import effective_transcript as get_transcript
+    from .options import RenderOptions
+
+    options = options or RenderOptions()
 
     W, H = size
     portrait = H > W
     rel = profile.caption_height if (profile and profile.caption_height) else 0.045
-    font = int(np.clip(rel * H * 1.05, H * (0.032 if portrait else 0.028), H * 0.06))
+    font = int(np.clip(rel * H * 1.05, H * (0.032 if portrait else 0.028), H * 0.06) * options.caption_scale)
     margin_v = int(H * (0.24 if portrait else 0.07))
-    if profile and profile.caption_position == "top":
+    position = options.caption_position
+    if position == "auto":
+        position = profile.caption_position if (profile and profile.caption_position != "none") else "bottom"
+    if position == "top":
         align, margin_v = 8, int(H * 0.08)
-    elif profile and profile.caption_position == "middle":
+    elif position == "middle":
         align, margin_v = 5, 0
     else:
         align = 2
+
+    def cased(t: str) -> str:
+        return t.lower() if options.caption_case == "lower" else (
+            t.upper() if options.caption_case == "upper" else t)
     outline = max(2, font // 14)
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -363,9 +374,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 continue
             parts = []
             for j, (a, b, word) in enumerate(ch):
-                nxt = ch[j + 1][0] if j + 1 < len(ch) else b
-                cs = max(1, int(round((nxt - a) * 100)))
-                parts.append(f"{{\\kf{cs}}}{word.replace('{', '(').replace('}', ')')}")
+                word = cased(word.replace('{', '(').replace('}', ')'))
+                if options.caption_style == "karaoke":  # each word lights up as it's spoken
+                    nxt = ch[j + 1][0] if j + 1 < len(ch) else b
+                    cs = max(1, int(round((nxt - a) * 100)))
+                    parts.append(f"{{\\kf{cs}}}{word}")
+                else:                                     # plain line, appears whole
+                    parts.append(word)
             events.append(f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Caption,,0,0,0,,"
                           + " ".join(parts))
     path.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
@@ -374,13 +389,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 # ------------------------------------------------------------------ assemble
 
-def build_segments(selection: dict, profile: StyleProfile | None) -> tuple[list[Segment], dict]:
+def build_segments(selection: dict, profile: StyleProfile | None,
+                   options=None) -> tuple[list[Segment], dict]:
     from .select import FileAnalysis
 
     fas: dict[str, FileAnalysis] = {}
     segs: list[Segment] = []
-    seg_len = target_segment_length(profile)
-    beat = bool(profile and profile.beat_synced)
+    seg_len = target_segment_length(profile) if (options is None or options.punch_ins) else None
+    beat = bool(profile and profile.beat_synced) and (options is None or options.beat_sync)
     punch_count = beat_moves = 0
     for ci, c in enumerate(selection["clips"]):
         fa = fas.setdefault(c["hash"], FileAnalysis(c["hash"]))
@@ -406,25 +422,29 @@ def build_segments(selection: dict, profile: StyleProfile | None) -> tuple[list[
 
 
 def render_styled(selection: dict, out: Path, *, spec: EditSpec | None = None,
-                  profile: StyleProfile | None = None, preview: bool = True,
+                  profile: StyleProfile | None = None, options=None, preview: bool = True,
                   progress: Callable[[str, float], None] | None = None) -> dict:
+    """Render a selection with every styling decision taken from RenderOptions (stored with the
+    selection as "options", so the app can edit them later)."""
+    from .options import RenderOptions
+
     spec = spec or EditSpec(**selection.get("spec", {}))
+    if options is None:
+        options = (RenderOptions(**selection["options"]) if selection.get("options")
+                   else RenderOptions.from_spec(spec))
     first = db.get_media(selection["clips"][0]["hash"])["meta"]
-    aspect = spec.aspect_ratio or (profile.aspect_ratio if profile else None)
-    if aspect not in ASPECTS:
-        aspect = None
+    aspect = options.aspect if options.aspect in ASPECTS else None   # None = keep source shape
     src_w, src_h = first["display_width"], first["display_height"]
     size = output_size(aspect, src_w, src_h) if aspect else (src_w - src_w % 2, src_h - src_h % 2)
     fps = first.get("fps") or 30.0
-    captions = spec.captions if spec.captions is not None else bool(profile and profile.captions_present)
+    captions = options.captions if options.captions is not None else bool(profile and profile.captions_present)
 
     work = get_settings().home / "renders" / f"style_{uuid.uuid4().hex[:10]}"
     work.mkdir(parents=True, exist_ok=True)
     try:
-        segs, pace = build_segments(selection, profile)
-        # colour: one LUT per source file, toward the reference look
+        segs, pace = build_segments(selection, profile, options)
         luts: dict[str, Path] = {}
-        if profile and profile.lab_mean:
+        if options.color_match and profile and profile.lab_mean:
             for h in {s.hash for s in segs}:
                 ranges = [(s.start, s.end) for s in segs if s.hash == h]
                 sm, ss = footage_lab_stats(h, ranges)
@@ -432,10 +452,14 @@ def render_styled(selection: dict, out: Path, *, spec: EditSpec | None = None,
                                          work / f"{h[:10]}.cube")
         target_aspect = ASPECTS[aspect] if aspect else src_w / src_h
         tclips = []
-        for i, s in enumerate(segs):
+        for s in segs:
             meta = db.get_media(s.hash)["meta"]
             vf = []
-            cf = crop_filter(meta, s, target_aspect)
+            if not options.face_follow:
+                s_center = Segment(s.hash, s.start, s.end, s.clip_index, s.zoom)
+                cf = crop_filter_centered(meta, s_center, target_aspect)
+            else:
+                cf = crop_filter(meta, s, target_aspect)
             if cf:
                 vf.append(cf)
             if s.hash in luts:
@@ -446,12 +470,23 @@ def render_styled(selection: dict, out: Path, *, spec: EditSpec | None = None,
         n_captions = 0
         if captions:
             subs = work / "captions.ass"
-            n_captions = build_captions(segs, fps, size, profile, subs)
+            n_captions = build_captions(segs, fps, size, profile, subs, options=options)
         info = render_timeline(tclips, out, fps=fps, size=size, subtitles=subs, preview=preview,
-                               fontsdir=ASSETS_DIR / "fonts", progress=progress)
-        info.update({"aspect": aspect or "source", "captions": n_captions, "color_matched": bool(luts),
-                     "segments": len(segs), **pace,
-                     "style": profile.name if profile else None})
+                               fontsdir=ASSETS_DIR / "fonts", loudness=options.loudness_lufs,
+                               progress=progress)
+        info.update({"aspect": aspect or "source", "captions": n_captions,
+                     "color_matched": bool(luts), "segments": len(segs), **pace,
+                     "style": profile.name if profile else None,
+                     "options": options.model_dump()})
         return info
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def crop_filter_centered(meta: dict, seg: Segment, aspect: float) -> str | None:
+    """Fixed centre crop (used when face-following is switched off)."""
+    W, H = meta["display_width"], meta["display_height"]
+    cw, ch = crop_box(W, H, aspect, seg.zoom)
+    if cw >= W - 2 and ch >= H - 2:
+        return None
+    return f"crop={cw}:{ch}:{(W - cw) // 2}:{(H - ch) // 2}"

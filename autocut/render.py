@@ -64,9 +64,9 @@ def silence_after(file_hash: str, t: float) -> float:
     return max(0.0, (min(nxt) if nxt else dur) - t - 0.01)
 
 
-def _loudnorm_measure(wav: Path) -> dict:
+def _loudnorm_measure(wav: Path, target: float = TARGET_LUFS) -> dict:
     p = subprocess.run(["ffmpeg", "-hide_banner", "-nostdin", "-i", str(wav), "-af",
-                        f"loudnorm=I={TARGET_LUFS}:TP={TRUE_PEAK}:LRA=11:print_format=json",
+                        f"loudnorm=I={target}:TP={TRUE_PEAK}:LRA=11:print_format=json",
                         "-f", "null", "-"], capture_output=True, text=True)
     m = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", p.stderr, re.S)
     if not m:
@@ -84,6 +84,7 @@ def measure_lufs(path: Path) -> float:
 def render_timeline(clips: list[TimelineClip], out: Path, *, fps: float | None = None,
                     size: tuple[int, int] | None = None, subtitles: Path | None = None,
                     preview: bool = True, crf: int = 18, fontsdir: Path | None = None,
+                    loudness: float = TARGET_LUFS,
                     progress: Callable[[str, float], None] | None = None) -> dict:
     if not clips:
         raise ValueError("Nothing to render: the timeline is empty.")
@@ -167,9 +168,9 @@ def render_timeline(clips: list[TimelineClip], out: Path, *, fps: float | None =
 
         # ---- loudness: two-pass loudnorm to -14 LUFS
         prog("normalising loudness", 0.78)
-        meas = _loudnorm_measure(joined)
+        meas = _loudnorm_measure(joined, loudness)
         loud = work / "audio_loud.wav"
-        ln = (f"loudnorm=I={TARGET_LUFS}:TP={TRUE_PEAK}:LRA=11:measured_I={meas['input_i']}:"
+        ln = (f"loudnorm=I={loudness}:TP={TRUE_PEAK}:LRA=11:measured_I={meas['input_i']}:"
               f"measured_TP={meas['input_tp']}:measured_LRA={meas['input_lra']}:"
               f"measured_thresh={meas['input_thresh']}:offset={meas['target_offset']}:linear=true")
         run_ffmpeg(["-i", str(joined), "-af", ln + f",aresample={AUDIO_RATE}", "-ar", str(AUDIO_RATE),
@@ -177,11 +178,11 @@ def render_timeline(clips: list[TimelineClip], out: Path, *, fps: float | None =
         # loudnorm can fall short when very quiet audio would exceed the peak limit; finish with
         # a gain correction into a look-ahead true-peak limiter (latency-compensated: no A/V shift)
         got = measure_lufs(loud)
-        if abs(got - TARGET_LUFS) > 0.3:
+        if abs(got - loudness) > 0.3:
             fixed = work / "audio_fixed.wav"
             lim = 10 ** ((TRUE_PEAK - 0.5) / 20)
             run_ffmpeg(["-i", str(loud), "-af",
-                        f"volume={TARGET_LUFS - got + 0.4:.2f}dB,"
+                        f"volume={loudness - got + 0.4:.2f}dB,"
                         f"alimiter=limit={lim:.4f}:attack=5:release=60:latency=1:level=disabled",
                         "-ar", str(AUDIO_RATE), "-c:a", "pcm_s16le", str(fixed)])
             loud = fixed
