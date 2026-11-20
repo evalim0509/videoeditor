@@ -620,6 +620,12 @@ def install(
             console.print(f"✓ Launcher: {p}")
     if firewall:
         console.print(S.allow_firewall(port))
+    from .web.auth import ensure_password
+
+    phrase = ensure_password()
+    if phrase:
+        console.print(f"\n[bold]Your first password:[/bold] [green]{phrase}[/green]  "
+                      "(saved in data/FIRST_LOGIN.txt — change it in the app)\n")
     ok = S.start_background(port)
     console.print(("✓ autocut is running" if ok else "✗ autocut didn't start — see " + str(S.log_path()))
                   + f": http://localhost:{port}  (phone on your Wi-Fi: http://{S.lan_ip()}:{port})")
