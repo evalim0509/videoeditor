@@ -580,6 +580,73 @@ def export(
         console.print(f"✓ {p}  [dim]({desc})[/dim]")
 
 
+@app.command()
+def daemon(port: int = typer.Option(8765)) -> None:
+    """Run the server and restart it automatically if it ever stops (used by auto-start)."""
+    from .system import daemon as _daemon
+
+    _daemon(port)
+
+
+@app.command("open")
+def open_cmd(port: int = typer.Option(8765)) -> None:
+    """Start autocut in the background if needed and open it in the browser."""
+    from .system import open_app
+
+    console.print(f"Opening {open_app(port)}")
+
+
+@app.command()
+def install(
+    port: int = typer.Option(8765),
+    autostart: bool = typer.Option(True, help="Start automatically when you log in."),
+    shortcut: bool = typer.Option(True, help="Create a desktop shortcut / double-click launcher."),
+    firewall: bool = typer.Option(False, help="Windows: allow phones on your Wi-Fi (admin prompt)."),
+) -> None:
+    """Set autocut up on this computer: auto-start, background running, launcher + desktop shortcut."""
+    from . import system as S
+
+    if autostart:
+        for line in S.install_autostart(port):
+            console.print("✓ " + line)
+    if shortcut:
+        for p in S.create_launcher(port):
+            console.print(f"✓ Launcher: {p}")
+    if firewall:
+        console.print(S.allow_firewall(port))
+    ok = S.start_background(port)
+    console.print(("✓ autocut is running" if ok else "✗ autocut didn't start — see " + str(S.log_path()))
+                  + f": http://localhost:{port}  (phone on your Wi-Fi: http://{S.lan_ip()}:{port})")
+
+
+@app.command()
+def uninstall() -> None:
+    """Remove auto-start (your projects and settings are kept)."""
+    from .system import uninstall_autostart
+
+    for p in uninstall_autostart() or ["nothing to remove"]:
+        console.print("removed " + p)
+
+
+@app.command()
+def phone(port: int = typer.Option(8765)) -> None:
+    """Set up / show how to reach autocut from your phone (home Wi-Fi + Tailscale HTTPS)."""
+    from . import system as S
+
+    running = S.is_running(port) or S.start_background(port)
+    console.print(f"Server: {'running' if running else 'NOT running'} on port {port}")
+    console.print(f"[bold]Home Wi-Fi:[/bold] http://{S.lan_ip()}:{port}   (everything except the mic — "
+                  "phones only allow the mic on https)")
+    r = S.tailscale_serve(port)
+    if r.get("ok"):
+        console.print(f"[bold]Anywhere (Tailscale, https, mic works):[/bold] [green]{r['https_url']}[/green]")
+    else:
+        console.print(f"[yellow]Tailscale: {r['message']}[/yellow]")
+        if not r.get("installed"):
+            console.print("Install it from https://tailscale.com/download, sign in, then run "
+                          "`autocut phone` again.")
+
+
 def _ts(s: str) -> float:
     """'1:43.5' or '103.5' → seconds."""
     if ":" in s:

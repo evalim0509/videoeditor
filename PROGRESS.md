@@ -396,3 +396,27 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   63.233 s total = the rendered video; media path resolves. Tests: `tests/test_export.py`.
 - Found & fixed: SRT export needlessly loaded the full analysis stack (models) — analysis is now
   only loaded when beat sync / punch-ins need it.
+
+### Phases 16–17 — phone access, auto-start, launcher (built; final steps need the user's computer)
+- `autocut/system.py` + commands:
+  - `autocut install [--firewall]`: auto-start at log-in, background running, desktop shortcut +
+    double-click launcher, then starts the server. Per-user, no admin (except the optional Windows
+    firewall rule for Wi-Fi access, which asks once).
+    Windows: hidden VBScript in the Startup folder → `pythonw -m autocut daemon`; desktop `.lnk`
+    (icon from the app icon) → `autocut-launch.bat` → `autocut open`.
+    macOS: LaunchAgent `com.autocut.server` (RunAtLoad + KeepAlive); `~/Desktop/autocut.command`.
+    Linux: systemd --user unit (Restart=always), fallback `~/.config/autostart`; `.desktop` launcher.
+  - `autocut daemon`: runs `serve` and restarts it on crash (backoff 2→60 s). Verified: killed the
+    server, daemon restarted it within seconds.
+  - `autocut open`: start in background if needed, open the browser. `autocut uninstall`.
+  - `autocut phone`: prints the home-Wi-Fi URL and runs `tailscale serve --bg --https=443
+    http://127.0.0.1:8765`, printing the private `https://<computer>.<tailnet>.ts.net` URL (HTTPS
+    certificate from Tailscale → the phone mic works; only devices in your tailnet can reach it;
+    no port forwarding). Explains what to do if Tailscale is missing / logged out.
+- `setup/windows.ps1` (winget), `setup/mac.sh` (Homebrew), `setup/linux.sh` (apt): install Python
+  3.12, FFmpeg, Git, Tailscale; venv; the right PyTorch (CUDA + cuBLAS/cuDNN for Whisper on NVIDIA,
+  default/MPS on Mac, CPU wheel otherwise); `autocut models`; `autocut install`; `autocut phone`.
+- `python -m autocut` entry point added (used by auto-start). README rewritten for end users.
+- Tested in the Linux container: install (autostart fallback + launchers), background start, daemon
+  restart, `autocut phone` without Tailscale. Windows/macOS paths and Tailscale need the user's
+  computer → [ME] checkpoint.
