@@ -330,6 +330,18 @@ def style(
         console.print(f"  • {line}")
 
 
+@app.command()
+def parse(instruction: str = typer.Argument(..., help='e.g. "funny 60 second tiktok with captions"')) -> None:
+    """Convert an instruction into a structured EditSpec (and show what wasn't understood)."""
+    from .intent import parse as _parse
+
+    spec = _parse(instruction)
+    console.print(f"[bold]Understood:[/bold] {spec.summary()}")
+    for w in spec.warnings:
+        console.print(f"[yellow]⚠ {w}[/yellow]")
+    console.print_json(spec.model_dump_json())
+
+
 def main() -> None:  # pragma: no cover
     app()
 

@@ -10,7 +10,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirmed by user, energy re-tuned from feedback
 - [x] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
 - [x] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
-- [ ] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
+- [x] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
 - [ ] 8. Voice input (server endpoint + CLI)
 - [ ] 9. Clip selector — **[ME]** confirm clips for "funny 60 seconds"
 - [ ] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
@@ -161,3 +161,21 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   music 84 % of the time at ~134 BPM, cuts *not* beat-synced (49 % vs 36 % chance), small captions
   at the bottom 22 % of the time, -17 LUFS, evenly exposed, moderate contrast, natural colours,
   warm tint.
+
+### Phase 7 — intent parser
+- `EditSpec` (pydantic, `autocut/editspec.py`): mood (funny/hype/emotional/calm/informative/auto),
+  target_duration + ±10 % tolerance, aspect_ratio, platform, captions (None = follow preset),
+  include/exclude keywords, visual_query, style_preset, versions, music, warnings, source_text,
+  parser name; `summary()` gives the one-line "what I understood" for the web UI.
+- Interface: `IntentParser` protocol + registry (`get_parser()`, env `AUTOCUT_INTENT_PARSER`), so a
+  local model parser can be registered later without touching callers.
+- `RuleBasedParser`: regexes driven by `autocut/config/intent.yaml`, copied to
+  `data/config/intent.yaml` on first use (user-editable, hot-reloaded by mtime). Matched phrases are
+  consumed; leftover meaningful words → warning "Didn't understand: ...".
+- Order: versions → duration (60 s / 1:30 / "a minute and a half" / "half a minute" / word numbers;
+  "under X" → 0.9·X so +10 % stays under the limit) → platform (aspect + default length) → aspect
+  words → captions on/off → music on/off → style preset (exact, then fuzzy "paris" → paris_vlog,
+  else warning listing available presets) → visual query ("showing X") → exclude/include keywords →
+  mood (most mentioned, ties → first) → vague length words.
+- Gotcha fixed: YAML 1.1 turned unquoted `no`/`on` into booleans; they're quoted now.
+- 20 tests in `tests/test_intent.py` (all pass). `autocut parse "..."` prints summary, warnings, JSON.

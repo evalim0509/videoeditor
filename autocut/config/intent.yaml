@@ -1,0 +1,108 @@
+# autocut instruction vocabulary (rule-based intent parser).
+#
+# Edit freely: your copy lives in data/config/intent.yaml (created on first run) and overrides this
+# file. Words are matched case-insensitively as whole words / phrases.
+
+moods:
+  funny: [funny, fun, hilarious, comedy, comedic, lol, laugh, laughs, laughing, humor, humour,
+          humorous, silly, goofy, jokes, joke, meme, memes, bloopers, blooper, lighthearted]
+  hype: [hype, hyped, energetic, energy, exciting, excited, intense, epic, action, upbeat,
+         lit, crazy, wild, pumped, party, highlights, highlight, banger, fast-paced, fast paced]
+  emotional: [emotional, emotion, heartfelt, touching, sentimental, sad, moving, nostalgic,
+              wholesome, cute, sweet, romantic, love, tearjerker]
+  calm: [calm, chill, relaxing, relaxed, peaceful, slow mo, slow-mo, slowmo, slow motion, slow, cozy, cosy, aesthetic, dreamy, soft,
+         gentle, mellow, vibe, vibes, cinematic, moody]
+  informative: [informative, educational, explain, explainer, tutorial, how-to, howto, review,
+                recap, summary, summarize, summarise, story, storytelling, talking, interview,
+                lesson, tips, guide, vlog-style recap]
+
+platforms:          # aspect ratio + typical length when none is given
+  tiktok:   {aliases: [tiktok, tik tok, tiktoks], aspect: "9:16", duration: 30}
+  reels:    {aliases: [reel, reels, instagram reel, ig reel, insta reel], aspect: "9:16", duration: 30}
+  shorts:   {aliases: [shorts, youtube short, youtube shorts, yt short], aspect: "9:16", duration: 45}
+  story:    {aliases: [story, stories, instagram story, ig story], aspect: "9:16", duration: 15}
+  youtube:  {aliases: [youtube, yt, youtube video], aspect: "16:9", duration: null}
+  instagram: {aliases: [instagram post, ig post, insta post, feed post], aspect: "4:5", duration: 30}
+
+aspects:
+  "9:16": [vertical, portrait, "9:16", "9x16", upright, phone format, tall]
+  "16:9": [horizontal, landscape, widescreen, "16:9", "16x9", wide]
+  "1:1":  [square, "1:1", "1x1"]
+  "4:5":  ["4:5", "4x5"]
+
+captions_on: [captions, captioned, subtitles, subtitled, subs, text, words on screen,
+              on-screen text, burned in captions, karaoke captions]
+captions_off_prefix: ["no", without, "w/o", skip, remove, "don't add", "dont add", "do not add", "no need for"]
+
+music_words: [music, song, soundtrack, background music, beat]
+
+# vague length words → seconds
+length_words:
+  quick: 20
+  short: 30
+  brief: 30
+  medium: 60
+  long: 120
+
+number_words:
+  a: 1
+  an: 1
+  one: 1
+  two: 2
+  three: 3
+  four: 4
+  five: 5
+  six: 6
+  seven: 7
+  eight: 8
+  nine: 9
+  ten: 10
+  fifteen: 15
+  twenty: 20
+  thirty: 30
+  forty: 40
+  forty-five: 45
+  fifty: 50
+  sixty: 60
+  ninety: 90
+  half a: 0.5
+  half: 0.5
+
+include_prefixes: [about, featuring, focus "on", focusing "on", include, including, with more,
+                   mostly, especially, highlight the, highlighting, starring, with]
+exclude_prefixes: ["no", without, "w/o", skip, exclude, excluding, avoid, "don't include",
+                   "dont include", "do not include", "don't show", "dont show", not, cut out, remove,
+                   leave out, minus]
+visual_prefixes: [showing, that shows, shots of, scenes of, scenes with, clips of, clips where,
+                  where i'm, where i am, where we're, where we are, when i'm, when we're, footage of,
+                  moments when, moments where, parts where, bits where]
+style_patterns:     # {name} is captured
+  - "in the style of {name}"
+  - "in the {name} style"
+  - "like my {name} preset"
+  - "like my {name} style"
+  - "like my {name} video"
+  - "like {name} preset"
+  - "use the {name} preset"
+  - "use the {name} style"
+  - "using the {name} preset"
+  - "using the {name} style"
+  - "using {name} style"
+  - "style {name}"
+  - "{name} style"
+  - "preset {name}"
+versions_words: [versions, version, variations, variation, options, takes, alternatives, edits, cuts]
+
+# words that carry no meaning for the edit (never produce a warning)
+filler: [a, an, the, and, or, of, for, to, me, my, i, it, its, it's, make, create, give, want, wanna,
+         need, please, can, could, you, would, like, just, some, video, clip, clips, edit, edits, cut,
+         from, this, that, these, those, footage, of, in, "on", at, into, out, up, with, using, use,
+         get, put, together, something, really, very, super, kinda, kind, sort, quick, nice, good,
+         great, cool, awesome, best, moments, moment, parts, part, bits, stuff, thing, things, all,
+         is, be, should, will, let's, lets, let, us, we, our, montage, compilation, reel, one, version,
+         seconds, second, sec, secs, minutes, minute, min, mins, long, length, around, about,
+         roughly, approximately, max, maximum, under, less, than, at, most, over, more, only, s,
+         m, ok, okay, hey, so, some, any, type, style, kinda, vibe, format, ratio, aspect, post,
+         thanks, thank, by, as, also, plus, then, now, here, there, today, yesterday,
+         vlog, vlogs, videos, done, add, have, has, do, turn, version,
+         short-form, shortform, social, media, platform, content]
