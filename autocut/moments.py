@@ -44,7 +44,7 @@ def words_near(transcript: dict | None, t0: float, t1: float) -> str:
 def confidence_label(cat: str, peak: float) -> str:
     """Plain-language strength for an event score (energy is relative, so it has its own scale)."""
     if cat == "energy":
-        return "high" if peak >= 0.9 else ("medium" if peak >= 0.7 else "low")
+        return "high" if peak >= 0.9 else ("medium" if peak >= 0.75 else "weak")
     if peak >= 0.3:
         return "clear"
     if peak >= 0.1:

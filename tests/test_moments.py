@@ -14,3 +14,4 @@ def test_confidence_labels():
     assert confidence_label("laughter", 0.15) == "possible"
     assert confidence_label("laughter", 0.02) == "faint"
     assert confidence_label("energy", 0.95) == "high"
+    assert confidence_label("energy", 0.6) == "weak"

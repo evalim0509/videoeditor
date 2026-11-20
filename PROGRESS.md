@@ -7,7 +7,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 1. Project skeleton, requirements, CLI (`autocut --help`)
 - [x] 2. Ingest: hashing, ffprobe metadata, 480p CFR proxies, SQLite, HDR/rotation/VFR handling
 - [x] 3. Transcription (faster-whisper, word timestamps, hardware-based model size)
-- [ ] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirm top laughter/energy moments  ← built & verified, waiting for user confirmation
+- [x] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirmed by user, energy re-tuned from feedback
 - [ ] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
 - [ ] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
 - [ ] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
@@ -95,8 +95,10 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   directly (no `wget`), 17 s for the 2:29 clip on CPU.
 - Tried and rejected: loudness normalisation before PANNs (no change), and the frame-level
   `Cnn14_DecisionLevelMax` SED model (same ranking, lower scores).
-- librosa per second: RMS dBFS, onset strength, `energy` = 0.6·rank(RMS) + 0.4·rank(onset) (0..1
-  within the file); integrated LUFS (pyloudnorm); beat tracking (tempo + beat times).
+- librosa per second: RMS dBFS, onset strength, dynamics (dB swing within ±1 s), integrated LUFS
+  (pyloudnorm), beat tracking (tempo + beat times).
+- `energy` (v3, tuned on user feedback): **0.5·rank(onset) + 0.5·rank(dynamics)**, first/last 1.5 s
+  of each clip damped ×0.5 (phone handling noise). Raw loudness is excluded on purpose.
 - Test clip findings: very quiet recording (-35.7 LUFS), speech in 141/150 s, music clearly present
   around 0:10. Laughter is only *faint* everywhere (max 0.046 at 0:39, then 1:00) — both PANNs models
   agree on the ranking, so the selector will use laughter **relative to the file** plus an absolute
@@ -104,3 +106,15 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - `autocut inspect <file> [--preview out.mp4]`: tables of top moments with strength labels
   (clear/possible/faint for events; high/medium/low for energy) and the words spoken around each;
   `--preview` renders a labelled montage of the top moments from the proxy for quick checking.
+
+#### [ME] feedback 1 (phase 4)
+- User: laughter #9 (1:10) not real; energy #2 (2:28), #5 (0:12), #7 (1:26), #10 (0:38) not real;
+  everything else correct. Real energy = 1:43, 1:05, 0:47, 1:51, 0:56.
+- Analysis: false moments were loud-but-flat narration (0:12, dynamics 12 dB vs 21–27 dB for real
+  ones), the loudest sustained talking at the clip's end (2:28, handling noise), and voiceless clatter.
+  Old formula ranked by loudness → 3 false in top 10.
+- Fix: energy = eventfulness + dynamics, edge damping. Now all 5 real moments rank top 6, 2:28/0:12
+  gone; 0:38 and 1:25 remain only at ranks 8/10 and are labelled "weak" (the clip simply has ~6
+  lively moments). Watch item: 2:24 ("boarding at 2…") ranks 4th — may be the same flat moment.
+- Laughter: scores below ~0.01 are noise (1:10 = 0.009, same level as accepted #6–#10), so the
+  selector treats faint laughter (<0.1) as a minor signal only.

@@ -2,8 +2,10 @@
 
 - PANNs (Cnn14, AudioSet 527 classes) per-second scores for laughter, cheering, applause, music,
   speech and shouting. Each second i is scored from a 2 s window centred on [i, i+1).
-- librosa loudness / energy per second: RMS level (dBFS), onset strength (how "eventful"), and a
-  combined 0..1 ``energy`` score (percentile rank within the file).
+- librosa loudness / energy per second: RMS level (dBFS), onset strength (how "eventful"),
+  dynamics (dB swing within ±1 s: punchy/expressive vs steady narration) and a combined 0..1
+  ``energy`` = 0.5·rank(onset) + 0.5·rank(dynamics). Raw loudness is deliberately NOT part of
+  energy: tuned on user feedback, loud-but-flat narration was being picked as "high energy".
 - Beat tracking (tempo + beat times) for beat-synced cuts later.
 
 Output (cached under stage "audio"):
@@ -22,7 +24,7 @@ import numpy as np
 from . import db
 from .config import ANALYSIS_SAMPLE_RATE
 
-VERSION = "1"
+VERSION = "3"
 STAGE = "audio"
 
 # AudioSet display names → our event categories (score = max over the member classes)
@@ -36,6 +38,7 @@ CATEGORIES: dict[str, list[str]] = {
 }
 EVENT_NAMES = list(CATEGORIES)
 WINDOW_SECONDS = 2.0
+EDGE_SECONDS = 1.5
 _lock = threading.Lock()
 
 
@@ -107,15 +110,23 @@ def loudness_energy(y: np.ndarray, sr: int = ANALYSIS_SAMPLE_RATE) -> dict:
     rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop)[0]
     onset = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop)
     fps = sr / hop
-    rms_db, onset_s = [], []
+    frame_db = 20 * np.log10(rms + 1e-9)
+    rms_db, onset_s, dyn = [], [], []
     for i in range(n_sec):
         a, b = int(i * fps), max(int(i * fps) + 1, int((i + 1) * fps))
         r = rms[a:b]
         rms_db.append(float(20 * np.log10(np.sqrt(np.mean(r ** 2)) + 1e-9)) if len(r) else -90.0)
         onset_s.append(float(np.mean(onset[a:b])) if len(onset[a:b]) else 0.0)
-    rms_db_a, onset_a = np.array(rms_db), np.array(onset_s)
-    # energy: loudness relative to this file + eventfulness, as a 0..1 rank
-    energy = 0.6 * _rank01(rms_db_a) + 0.4 * _rank01(onset_a)
+        w = frame_db[max(0, int((i - 1) * fps)): int((i + 2) * fps)]
+        dyn.append(float(np.percentile(w, 95) - np.percentile(w, 10)) if len(w) > 4 else 0.0)
+    rms_db_a, onset_a, dyn_a = np.array(rms_db), np.array(onset_s), np.array(dyn)
+    energy = 0.5 * _rank01(onset_a) + 0.5 * _rank01(dyn_a)
+    # Phone clips start/end with handling noise (picking up / putting down the phone): damp the
+    # first and last 1.5 s so they don't masquerade as lively moments.
+    edge = int(np.ceil(EDGE_SECONDS))
+    if len(energy) > 4 * edge:
+        energy[:edge] *= 0.5
+        energy[-edge:] *= 0.5
 
     meter = pyln.Meter(sr)
     try:
@@ -126,6 +137,7 @@ def loudness_energy(y: np.ndarray, sr: int = ANALYSIS_SAMPLE_RATE) -> dict:
     return {
         "rms_db": [round(v, 2) for v in rms_db_a],
         "onset": [round(v, 3) for v in onset_a],
+        "dynamics": [round(v, 2) for v in dyn_a],
         "energy": [round(float(v), 3) for v in energy],
         "integrated_lufs": round(integrated, 2) if np.isfinite(integrated) else None,
         "peak_dbfs": round(float(20 * np.log10(np.max(np.abs(y)) + 1e-9)), 2),
@@ -148,7 +160,8 @@ def analyze_wav(path: Path) -> dict:
     scores = panns_scores(y)
     n = len(le["energy"])
     scores = {k: v[:n] for k, v in scores.items()}
-    scores.update({"rms_db": le["rms_db"], "onset": le["onset"], "energy": le["energy"]})
+    scores.update({"rms_db": le["rms_db"], "onset": le["onset"], "dynamics": le["dynamics"],
+                   "energy": le["energy"]})
     return {"seconds": n, "scores": scores, "tempo": le["tempo"], "beats": le["beats"],
             "integrated_lufs": le["integrated_lufs"], "peak_dbfs": le["peak_dbfs"]}
 
@@ -165,7 +178,8 @@ def analyze(file_hash: str, *, force: bool = False) -> dict:
         n = int(np.ceil(media["meta"]["duration"]))
         zeros = [0.0] * n
         result = {"seconds": n, "scores": {**{c: zeros for c in CATEGORIES}, "rms_db": [-90.0] * n,
-                                           "onset": zeros, "energy": zeros},
+                                           "onset": zeros, "dynamics": zeros,
+                                           "energy": zeros},
                   "tempo": 0.0, "beats": [], "integrated_lufs": None, "peak_dbfs": None}
     else:
         result = analyze_wav(Path(media["audio_path"]))
