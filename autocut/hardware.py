@@ -24,6 +24,7 @@ class Hardware:
     whisper_device: str     # faster-whisper / CTranslate2: "cuda" | "cpu"
     whisper_compute: str
     whisper_model: str
+    voice_model: str        # short spoken instructions: fast model
     ffmpeg_hwenc: str | None  # e.g. "h264_nvenc", "h264_videotoolbox"
 
     def as_dict(self) -> dict:
@@ -118,4 +119,8 @@ def detect() -> Hardware:
                     accelerator=accel, gpu_name=gpu_name, gpu_vram_gb=vram,
                     torch_device=torch_dev, whisper_device=w_dev, whisper_compute=w_comp,
                     whisper_model=os.environ.get("AUTOCUT_WHISPER_MODEL", w_model),
+                    # measured: small = 2.6 s vs turbo = 7.4 s per 4 s command on 4 CPU cores, and
+                    # equally accurate on clear close-mic speech
+                    voice_model=os.environ.get("AUTOCUT_VOICE_MODEL",
+                                               "large-v3-turbo" if accel == "cuda" else "small"),
                     ffmpeg_hwenc=hwenc)

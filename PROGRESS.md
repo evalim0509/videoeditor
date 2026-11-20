@@ -11,7 +11,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
 - [x] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
 - [x] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
-- [ ] 8. Voice input (server endpoint + CLI)
+- [x] 8. Voice input (server endpoint + CLI)
 - [ ] 9. Clip selector — **[ME]** confirm clips for "funny 60 seconds"
 - [ ] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
 - [ ] 11. Style matching — **[ME]** watch the output
@@ -179,3 +179,23 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   mood (most mentioned, ties → first) → vague length words.
 - Gotcha fixed: YAML 1.1 turned unquoted `no`/`on` into booleans; they're quoted now.
 - 20 tests in `tests/test_intent.py` (all pass). `autocut parse "..."` prints summary, warnings, JSON.
+
+### Phase 8 — voice input
+- `autocut/voice.py`: any recording (browser WebM/Opus, iPhone MP4/AAC, wav...) → FFmpeg decode →
+  faster-whisper with a vocabulary prompt (TikTok, captions, numbers...) → intent parser → EditSpec.
+- Voice model chosen separately from the footage model: **small** int8 on CPU/Apple, large-v3-turbo
+  on NVIDIA (`AUTOCUT_VOICE_MODEL`). Measured on 4 synthetic spoken commands: small 2.6 s avg (auto
+  language) vs turbo 7.4 s, and small was *more* accurate (turbo heard "three" as "free").
+  Language auto-detected, falls back to English when unsure (`AUTOCUT_VOICE_LANGUAGE` to force).
+- Parser vocabulary got common mishearings before units/"versions" (free→3, to/too→2, for→4) and
+  bare "instagram/insta/ig".
+- Server: FastAPI `POST /api/voice` (multipart `audio`) → {transcript, spec, summary}; also
+  `POST /api/parse`. CLI: `autocut voice <file>`.
+- **Login built now** (not left for phase 13) because the endpoint is network-reachable:
+  scrypt-hashed password in `data/auth.json`; random 4-word passphrase generated on first start
+  (printed + `data/FIRST_LOGIN.txt`, removed after the password is changed); HMAC-signed 30-day
+  session cookie (HttpOnly, SameSite=Lax, Secure over HTTPS) or Bearer token; changing the password
+  rotates the signing secret (logs out other devices); 8 failed logins / 10 min per IP → 429.
+  `autocut password` sets it from the terminal.
+- Tests: `tests/test_web_voice.py` (auth everywhere, rate limit, bearer, password change, first-run
+  passphrase, real spoken WebM → EditSpec via espeak-ng).

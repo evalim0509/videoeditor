@@ -22,7 +22,7 @@ platforms:          # aspect ratio + typical length when none is given
   shorts:   {aliases: [shorts, youtube short, youtube shorts, yt short], aspect: "9:16", duration: 45}
   story:    {aliases: [story, stories, instagram story, ig story], aspect: "9:16", duration: 15}
   youtube:  {aliases: [youtube, yt, youtube video], aspect: "16:9", duration: null}
-  instagram: {aliases: [instagram post, ig post, insta post, feed post], aspect: "4:5", duration: 30}
+  instagram: {aliases: [instagram post, ig post, insta post, feed post, instagram, insta, ig], aspect: "4:5", duration: 30}
 
 aspects:
   "9:16": [vertical, portrait, "9:16", "9x16", upright, phone format, tall]
@@ -67,6 +67,11 @@ number_words:
   ninety: 90
   half a: 0.5
   half: 0.5
+  # common speech-recognition mishearings (only used right before a unit or 'versions')
+  free: 3
+  "to": 2
+  too: 2
+  for: 4
 
 include_prefixes: [about, featuring, focus "on", focusing "on", include, including, with more,
                    mostly, especially, highlight the, highlighting, starring, with]

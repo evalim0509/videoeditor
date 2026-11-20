@@ -342,6 +342,36 @@ def parse(instruction: str = typer.Argument(..., help='e.g. "funny 60 second tik
     console.print_json(spec.model_dump_json())
 
 
+@app.command()
+def voice(audio: Path = typer.Argument(..., exists=True, dir_okay=False,
+                                        help="A voice recording (wav/webm/m4a/mp3/...).")) -> None:
+    """Transcribe a spoken instruction locally and convert it into an EditSpec."""
+    from .editspec import EditSpec
+    from .voice import voice_to_spec
+
+    with console.status("listening…"):
+        r = voice_to_spec(audio)
+    tr = r["transcript"]
+    console.print(f"[bold]Heard[/bold] ({tr['duration']}s audio, {tr['seconds']}s to transcribe): "
+                  f"“{tr['text']}”")
+    spec = EditSpec(**r["spec"])
+    console.print(f"[bold]Understood:[/bold] {spec.summary()}")
+    for w in spec.warnings:
+        console.print(f"[yellow]⚠ {w}[/yellow]")
+
+
+@app.command()
+def password(
+    new: Optional[str] = typer.Option(None, help="New password (prompted if omitted)."),
+) -> None:
+    """Set the web app login password."""
+    from .web.auth import set_password
+
+    pw = new or typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+    set_password(pw)
+    console.print("Password updated. All devices need to log in again.")
+
+
 def main() -> None:  # pragma: no cover
     app()
 

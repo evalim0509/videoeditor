@@ -108,7 +108,8 @@ def _drop_hallucinations(segs: list) -> list:
 
 
 def transcribe_audio(audio_path: Path, *, model_size: str | None = None,
-                     language: str | None = None, vad: bool = True) -> dict:
+                     language: str | None = None, vad: bool = True,
+                     initial_prompt: str | None = None, fallback_language: str | None = None) -> dict:
     """Transcribe any audio/video file without caching (also used for voice commands)."""
     from .ffmpeg import load_audio
 
@@ -124,9 +125,12 @@ def transcribe_audio(audio_path: Path, *, model_size: str | None = None,
         lang_prob = 1.0
         if language is None:
             language, lang_prob = detect_language(model, audio)
+            if fallback_language and lang_prob < 0.5:
+                language = fallback_language
         segments, info = model.transcribe(
             audio, language=language, word_timestamps=True, vad_filter=vad,
-            vad_parameters=VAD_PARAMS, beam_size=5, condition_on_previous_text=False)
+            vad_parameters=VAD_PARAMS, beam_size=5, condition_on_previous_text=False,
+            initial_prompt=initial_prompt)
         raw = _drop_hallucinations(list(segments))
     segs = []
     for s in raw:
