@@ -65,9 +65,12 @@ def make_preview(video: "Path | None", items: list[tuple], out: "Path",
     parts = []
     for i, item in enumerate(items):
         label, t = item[0], item[1]
-        src = item[2] if len(item) > 2 else video
-        start = max(0.0, t - before)
-        args += ["-ss", f"{start:.3f}", "-t", f"{before + after:.3f}", "-i", str(src)]
+        src = item[2] if len(item) > 2 and item[2] else video
+        if len(item) > 3:  # exact (start, duration)
+            start, length = t, item[3]
+        else:
+            start, length = max(0.0, t - before), before + after
+        args += ["-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", str(src)]
         text = label.replace(":", r"\:").replace("'", "")
         parts.append(
             f"[{i}:v]scale=-2:480,setsar=1,fps=30,format=yuv420p,"

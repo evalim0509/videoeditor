@@ -12,7 +12,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
 - [x] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
 - [x] 8. Voice input (server endpoint + CLI)
-- [ ] 9. Clip selector — **[ME]** confirm clips for "funny 60 seconds"
+- [ ] 9. Clip selector — **[ME]** confirm clips for "funny 60 seconds"  ← built & verified, waiting for user feedback
 - [ ] 10. Renderer (frame-accurate cuts, crossfades, -14 LUFS)
 - [ ] 11. Style matching — **[ME]** watch the output
 - [ ] 12. `autocut run` one-command pipeline
@@ -199,3 +199,26 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   `autocut password` sets it from the terminal.
 - Tests: `tests/test_web_voice.py` (auth everywhere, rate limit, bearer, password change, first-run
   passphrase, real spoken WebM → EditSpec via espeak-ng).
+
+### Phase 9 — clip selector
+- `autocut select "instruction" --footage F [--out sel.json] [--preview p.mp4]`; `select_clips()`
+  returns clips + 10 runner-ups + warnings; `analysis.analyze_all()` runs every cached stage.
+- **Never mid-word**: safe zones = gaps between consecutive words shrunk by a 40 ms guard (smaller
+  when the gap is tight; touching words leave the exact boundary point), plus leading/trailing
+  silence; file edges always safe. Every boundary is validated (assertion) before returning. Found
+  and fixed two real cases: a clip ending in the file's last word, and back-to-back words with no
+  gap ("You guys. I'm out." at 1:11).
+- Candidates (3–15 s): runs of consecutive sentences, start/end padded (0.15 s / 0.30 s) inside the
+  surrounding silent zone, snapped to a shot cut if one falls in that zone, extended to include
+  laughter right after the last sentence; plus grid windows (3 / 7 / 9 s, 1 s step) in stretches
+  without speech. 256 candidates on the test clip.
+- Features (≈0..1): laughter (½ relative to the file's max + ½ absolute /0.3), energy, music,
+  cheering, applause, shouting (0.6·max + 0.4·mean), speech share, speech rate, clarity (mean word
+  confidence), complete sentences, face presence, face size, length fit (mood's preferred range),
+  visual-query CLIP similarity (relative), include-keyword hits (transcript or CLIP).
+- Mood weights + preferred lengths + hook-first in `autocut/config/selector.yaml` (user copy in
+  `data/config/`). Excludes: transcript match or strong CLIP match → dropped.
+- Selection: best-first greedy aiming at the target, never over +10 %, then fill to −10 %; no
+  overlaps; text-overlap duplicates removed; chronological order, strongest clip first as a hook for
+  funny/hype. Reasons are generated from the top weighted contributions + the quote, with a
+  "speech is hard to make out" flag for low-confidence words.

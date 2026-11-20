@@ -372,6 +372,55 @@ def password(
     console.print("Password updated. All devices need to log in again.")
 
 
+@app.command("select")
+def select_cmd(
+    instruction: str = typer.Argument(..., help='e.g. "funny 60 seconds"'),
+    footage: List[Path] = typer.Option(..., "--footage", "-f", exists=True, help="Files or folders."),
+    out: Path = typer.Option(Path("output/selection.json"), help="Where to save the selection."),
+    preview: Optional[Path] = typer.Option(None, help="Render a quick proxy preview of the picks."),
+) -> None:
+    """Pick the best clips for an instruction (snapped to sentences, never mid-word)."""
+    from .analysis import analyze_all
+    from .editspec import EditSpec
+    from .ingest import ingest_paths
+    from .intent import parse as _parse
+    from .moments import make_preview
+    from .select import select_clips
+    from .transcribe import fmt_ts
+
+    spec = _parse(instruction)
+    console.print(f"[bold]Understood:[/bold] {spec.summary()}")
+    for w in spec.warnings:
+        console.print(f"[yellow]⚠ {w}[/yellow]")
+    with console.status("ingesting & analysing (cached results are reused)…") as st:
+        results = ingest_paths(footage)
+        for r in results:
+            analyze_all(r.hash, progress=lambda s, x, n=r.path.name: st.update(f"{n}: {s}…"))
+        sel = select_clips([r.hash for r in results], spec)
+    t = Table("#", "file", "start", "end", "len", "score", "why", title=(
+        f"{len(sel['clips'])} clips, {sel['total_duration']:.1f}s (target {sel['target']:.0f}s, "
+        f"allowed {sel['range'][0]}–{sel['range'][1]}s, mood: {sel['mood_used']})"),
+        title_justify="left", show_lines=True)
+    for i, c in enumerate(sel["clips"], 1):
+        t.add_row(str(i), c["file"], fmt_ts(c["start"]), fmt_ts(c["end"]), f"{c['duration']:.1f}s",
+                  f"{c['score']:.2f}", c["reason"])
+    console.print(t)
+    for w in sel["warnings"]:
+        console.print(f"[yellow]⚠ {w}[/yellow]")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(sel, indent=2))
+    console.print(f"Saved selection → {out}  ({len(sel['runner_ups'])} runner-ups included)")
+    if preview and sel["clips"]:
+        from . import db
+
+        items = [(f"#{i} {fmt_ts(c['start'])}-{fmt_ts(c['end'])}", c["start"],
+                  db.get_media(c["hash"])["proxy_path"], c["duration"])
+                 for i, c in enumerate(sel["clips"], 1)]
+        with console.status("rendering preview…"):
+            make_preview(None, items, preview)
+        console.print(f"Preview → {preview}")
+
+
 def main() -> None:  # pragma: no cover
     app()
 
