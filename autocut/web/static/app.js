@@ -31,10 +31,11 @@ function toast(msg, kind = "") {
 }
 function sheet(html, onMount) {
   const s = $("#sheet"), b = $("#sheet-backdrop");
-  s.innerHTML = `<div class="grab"></div>${html}`;
+  s.innerHTML = `<div class="sheet-head"><div class="grab"></div><button class="btn small-btn ghost sheet-done" type="button">Done</button></div>${html}`;
   s.hidden = false; b.hidden = false;
-  const close = () => { s.hidden = true; b.hidden = true; s.innerHTML = ""; };
+  const close = () => { s.querySelectorAll("video").forEach((v) => v.pause()); s.hidden = true; b.hidden = true; s.innerHTML = ""; };
   b.onclick = close;
+  s.querySelector(".sheet-done").onclick = close;
   onMount?.(s, close);
   return close;
 }
@@ -561,5 +562,5 @@ function openMenu() {
 // ------------------------------------------------------------------ boot
 try { const th = localStorage.getItem("theme"); if (th) document.documentElement.dataset.theme = th; } catch { }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { });
-window.autocut = { api, go, sheet, toast, esc, fmtDur, setTop, current, refreshProject, $, $$, icon };
+window.autocut = { api, go, sheet, toast, esc, fmtDur, setTop, current, refreshProject, $, $$, icon, SETTINGS };
 import("/static/review.js").catch(() => { }).finally(route);

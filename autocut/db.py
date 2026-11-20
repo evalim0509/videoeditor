@@ -44,6 +44,17 @@ CREATE TABLE IF NOT EXISTS analysis (
     created_at REAL NOT NULL,
     PRIMARY KEY (hash, stage, version)
 );
+CREATE TABLE IF NOT EXISTS feedback (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    hash        TEXT NOT NULL,
+    start       REAL NOT NULL,
+    end         REAL NOT NULL,
+    decision    TEXT NOT NULL,
+    mood        TEXT,
+    instruction TEXT,
+    features    TEXT,
+    created_at  REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS blobs (
     hash       TEXT NOT NULL,
     stage      TEXT NOT NULL,
@@ -181,3 +192,21 @@ def cached_stages(file_hash: str) -> list[tuple[str, str]]:
                          "SELECT stage, version FROM blobs WHERE hash=?",
                          (file_hash, file_hash)).fetchall()
     return [(r["stage"], r["version"]) for r in rows]
+
+
+# ---------------------------------------------------------------- review decisions
+
+def log_feedback(file_hash: str, start: float, end: float, decision: str, *, mood: str | None = None,
+                 instruction: str | None = None, features: dict | None = None) -> None:
+    """Record keep/remove/swap/add/trim decisions from the review screen (for tuning weights)."""
+    with connect() as c:
+        c.execute("INSERT INTO feedback(hash, start, end, decision, mood, instruction, features, created_at)"
+                  " VALUES (?,?,?,?,?,?,?,?)",
+                  (file_hash, start, end, decision, mood, instruction,
+                   json.dumps(features) if features else None, time.time()))
+
+
+def feedback_rows(limit: int = 1000) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT * FROM feedback ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [dict(r) for r in rows]

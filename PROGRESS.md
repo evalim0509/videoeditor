@@ -17,7 +17,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 11. Style matching — **[ME]** approved by user after feedback 3–4
 - [x] 12. `autocut run` one-command pipeline
 - [x] 13. Mobile-first web app / PWA
-- [ ] 14. Review screen
+- [x] 14. Review screen
 - [ ] 15. FCPXML + EDL export
 - [ ] 16. Phone access via Wi-Fi + Tailscale HTTPS — **[ME]** phone walkthrough
 - [ ] 17. Auto-start, launcher, desktop shortcut
@@ -354,3 +354,26 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   Bug found & fixed: `.icon-btn{display:grid}` overrode the `hidden` attribute.
 - Tests: `tests/test_web_app.py` (public shell vs protected data, CRUD + settings validation,
   resumable upload incl. resume, 409 re-sync, 415, auto-queued analysis).
+
+### Phase 14 — review screen
+- `autocut/review.py`: operations on the editable edit list (selection JSON): remove → "removed"
+  (restorable), restore (refused if it would overlap), swap (best runner-up that doesn't overlap;
+  the old clip becomes the first runner-up), move up/down, add a runner-up (refused if overlapping),
+  trim start/end ±0.5 s **snapped to the next word gap in that direction** and clamped so it never
+  overlaps a neighbouring clip from the same file (1–30 s). Clip text refreshed from the corrected
+  transcript.
+- Decision log: SQLite `feedback` table (hash, start, end, decision, mood, instruction, features);
+  remove / restore / swap_in / swap_out / add / trim_* logged on each action, "keep" for every
+  remaining clip when the user renders. Ready for future automatic weight tuning.
+- API: review data with thumbnail + proxy URLs; clip operations; per-edit settings; thumbnails
+  (cached JPEGs from the proxy); proxy streaming (Range) for clip previews (`#t=start,end`, auto-stops
+  at the end); caption lines per clip, retype (manual correction), re-listen (optional hint),
+  project-wide context; re-render. Footage hashes are checked against the project.
+- UI (`static/review.js`): current render on top, touch clip cards (thumbnail, times, reason, ▶
+  preview sheet, Start −/+ and End −/+, Captions, ⇄ Swap, ↑/↓, ✕ Remove, swipe left to remove),
+  removed list with Restore, "Add a moment" sheet with 10 runner-ups, "Fix captions by telling me"
+  context box, "Settings for this edit" sheet, sticky "Render my changes".
+- Verified on iPhone 13 emulation: remove, swap, move, trim (end 26.7 → 27.2 s, in a word gap), add,
+  swipe-left remove, caption edit; re-render → 19.37 s video = edited list total. Decision log rows
+  written. Bugs found & fixed: unconstrained `<video>` on the review page overflowed horizontally
+  (now global video/img sizing + no horizontal scroll); sheets had no visible close → "Done" button.

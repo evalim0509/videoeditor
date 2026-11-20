@@ -68,6 +68,32 @@ class EditBody(BaseModel):
     instruction: str
 
 
+class ClipOp(BaseModel):
+    op: str
+    clip_id: str | None = None
+    runner_id: str | None = None
+    dir: int | None = None
+    edge: str | None = None
+    delta: float | None = None
+    position: int | None = None
+
+
+class CaptionBody(BaseModel):
+    hash: str
+    start: float
+    end: float
+    text: str | None = None
+    hint: str | None = None
+
+
+class ContextBody(BaseModel):
+    text: str
+
+
+class OptionsBody(BaseModel):
+    options: dict
+
+
 def _set_cookie(response: Response, request: Request, token: str) -> None:
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_DAYS * 86400, httponly=True,
@@ -321,7 +347,130 @@ def create_app() -> FastAPI:
         e = P.find_edit(p, eid)
         if not e or not e.get("selection"):
             raise HTTPException(404, "Not found.")
-        J._set_edit(pid, eid, status="queued")  # noqa: SLF001
+        from .. import review as R
+
+        try:
+            R.log_kept(R.load(Path(e["selection"])))
+        except Exception:
+            pass
+        J._set_edit(pid, eid, status="queued", changed=False)  # noqa: SLF001
         return J.queue_render(pid, eid)
+
+    # ------------------------------------------------------------------ review (phase 14)
+    def _footage_hash(p: dict, h: str) -> dict:
+        from .. import db
+
+        if not any(f.get("hash") == h for f in p["footage"]):
+            raise HTTPException(404, "Not part of this project.")
+        return db.get_media(h)
+
+    def _edit_sel(pid: str, eid: str):
+        from .. import review as R
+
+        p = _project_or_404(pid)
+        e = P.find_edit(p, eid)
+        if not e or not e.get("selection"):
+            raise HTTPException(404, "Edit not found.")
+        return p, e, R.load(Path(e["selection"]))
+
+    def _with_urls(pid: str, sel: dict) -> dict:
+        for lst in ("clips", "runner_ups", "removed"):
+            for c in sel.get(lst, []):
+                mid = (c["start"] + c["end"]) / 2
+                c["thumb"] = f"/api/projects/{pid}/thumb?hash={c['hash']}&t={mid:.2f}"
+                c["proxy"] = f"/api/projects/{pid}/proxy/{c['hash']}"
+                c.pop("features", None)
+        return sel
+
+    @app.get("/api/projects/{pid}/edits/{eid}/review", dependencies=user)
+    def review(pid: str, eid: str):
+        p, e, sel = _edit_sel(pid, eid)
+        sel["edit"] = {k: e.get(k) for k in ("id", "instruction", "status", "summary", "duration",
+                                               "rendered", "finished")}
+        return _with_urls(pid, sel)
+
+    @app.post("/api/projects/{pid}/edits/{eid}/clips", dependencies=user)
+    def clip_op(pid: str, eid: str, body: ClipOp):
+        from .. import review as R
+
+        p, e, sel = _edit_sel(pid, eid)
+        try:
+            R.apply(sel, body.model_dump(exclude_none=True))
+        except R.ReviewError as ex:
+            raise HTTPException(400, str(ex))
+        R.save(Path(e["selection"]), sel)
+        J._set_edit(pid, eid, changed=True)  # noqa: SLF001
+        return _with_urls(pid, sel)
+
+    @app.patch("/api/projects/{pid}/edits/{eid}/options", dependencies=user)
+    def edit_options(pid: str, eid: str, body: OptionsBody):
+        from .. import review as R
+        from ..options import RenderOptions
+
+        p, e, sel = _edit_sel(pid, eid)
+        try:
+            sel["options"] = RenderOptions(**{**sel.get("options", {}), **body.options}).model_dump()
+        except Exception as ex:
+            raise HTTPException(400, f"Bad setting: {ex}")
+        R.save(Path(e["selection"]), sel)
+        return {"options": sel["options"]}
+
+    @app.get("/api/projects/{pid}/thumb", dependencies=user)
+    def thumb(pid: str, hash: str, t: float):
+        from ..config import get_settings
+        from ..ffmpeg import run_ffmpeg
+
+        p = _project_or_404(pid)
+        m = _footage_hash(p, hash)
+        d = get_settings().home / "thumbs"
+        d.mkdir(exist_ok=True)
+        f = d / f"{hash[:16]}_{t:.1f}.jpg"
+        if not f.exists():
+            run_ffmpeg(["-ss", f"{max(0.0, t):.2f}", "-i", m["proxy_path"], "-frames:v", "1",
+                        "-vf", "scale=320:-2", "-q:v", "5", str(f)])
+        return FileResponse(f, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+    @app.get("/api/projects/{pid}/proxy/{h}", dependencies=user)
+    def proxy(pid: str, h: str):
+        p = _project_or_404(pid)
+        m = _footage_hash(p, h)
+        return FileResponse(m["proxy_path"], media_type="video/mp4")
+
+    @app.get("/api/projects/{pid}/captions", dependencies=user)
+    def captions(pid: str, hash: str, start: float, end: float):
+        from ..review import caption_lines
+
+        _footage_hash(_project_or_404(pid), hash)
+        return caption_lines(hash, start, end)
+
+    @app.put("/api/projects/{pid}/captions", dependencies=user)
+    def set_caption(pid: str, body: CaptionBody):
+        from ..corrections import correct_text
+        from ..review import caption_lines
+
+        _footage_hash(_project_or_404(pid), body.hash)
+        e = correct_text(body.hash, body.start, body.end + 1e-3, body.text or "")
+        return {"edit": e, "lines": caption_lines(body.hash, body.start - 5, body.end + 5)}
+
+    @app.post("/api/projects/{pid}/captions/relisten", dependencies=user)
+    async def relisten_caption(pid: str, body: CaptionBody):
+        from ..corrections import relisten
+
+        _footage_hash(_project_or_404(pid), body.hash)
+        e = await run_in_threadpool(relisten, body.hash, body.start, body.end, body.hint)
+        return {"edit": e}
+
+    @app.post("/api/projects/{pid}/context", dependencies=user)
+    async def give_context(pid: str, body: ContextBody):
+        from ..corrections import apply_context
+
+        p = _project_or_404(pid)
+        P.update(pid, lambda q: q.update(context=body.text[:4000]))
+        changes = []
+        for f in p["footage"]:
+            if f.get("hash"):
+                ch = await run_in_threadpool(apply_context, f["hash"], body.text)
+                changes += [{**c, "file": f["name"]} for c in ch]
+        return {"changes": changes}
 
     return app
