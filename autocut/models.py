@@ -18,6 +18,8 @@ PANNS_FILE = "Cnn14_mAP=0.431.pth"
 PANNS_MIN_BYTES = 300_000_000
 
 CLIP_MODEL = ("ViT-B-32", "laion2b_s34b_b79k")  # open_clip (arch, pretrained tag)
+CLIP_HF_REPO = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
+CLIP_WEIGHTS = "open_clip_model.safetensors"
 FACE_DETECTOR_URL = ("https://storage.googleapis.com/mediapipe-models/face_detector/"
                      "blaze_face_short_range/float16/1/blaze_face_short_range.tflite")
 
@@ -71,14 +73,36 @@ def whisper_model_path(size: str) -> str:
         return snapshot_download(repo)
 
 
+def offline_first(fn):
+    """Run fn() with the Hugging Face hub forced offline (use the local copy); only if the weights
+    aren't downloaded yet, retry online once. Keeps every normal run fully offline."""
+    import huggingface_hub.constants as hfc
+
+    prev = hfc.HF_HUB_OFFLINE
+    hfc.HF_HUB_OFFLINE = True
+    try:
+        return fn()
+    except Exception:
+        hfc.HF_HUB_OFFLINE = prev
+        return fn()
+    finally:
+        hfc.HF_HUB_OFFLINE = prev
+
+
 def clip_model():
     """Load (model, preprocess, tokenizer) for open_clip, downloading weights once."""
     import open_clip
 
+    from huggingface_hub import hf_hub_download
+
     get_settings()
-    arch, tag = CLIP_MODEL
-    model, _, preprocess = open_clip.create_model_and_transforms(arch, pretrained=tag)
-    tokenizer = open_clip.get_tokenizer(arch)
+    arch, _tag = CLIP_MODEL
+    try:  # local copy first: no network at all
+        weights = hf_hub_download(CLIP_HF_REPO, CLIP_WEIGHTS, local_files_only=True)
+    except Exception:
+        weights = hf_hub_download(CLIP_HF_REPO, CLIP_WEIGHTS)
+    model, _, preprocess = open_clip.create_model_and_transforms(arch, pretrained=weights)
+    tokenizer = open_clip.get_tokenizer(arch)  # bundled BPE vocab, no download
     model.eval()
     return model, preprocess, tokenizer
 

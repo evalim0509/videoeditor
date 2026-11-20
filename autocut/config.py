@@ -37,13 +37,22 @@ class Settings:
         for d in (self.home, self.proxies_dir, self.models_dir, self.projects_dir,
                   self.presets_dir, self.config_dir):
             d.mkdir(parents=True, exist_ok=True)
-        # Keep every downloaded model inside our data dir.
-        os.environ.setdefault("HF_HOME", str(self.models_dir / "huggingface"))
-        os.environ.setdefault("TORCH_HOME", str(self.models_dir / "torch"))
+        _set_model_env(self.models_dir)
         return self
 
     def proxy_dir_for(self, file_hash: str) -> Path:
         return self.proxies_dir / file_hash[:16]
+
+
+def _set_model_env(models_dir: Path) -> None:
+    """Keep every downloaded model inside our data dir. Must run before huggingface_hub / torch
+    are imported (they read these variables at import time), hence also called at module load."""
+    os.environ.setdefault("HF_HOME", str(models_dir / "huggingface"))
+    os.environ.setdefault("TORCH_HOME", str(models_dir / "torch"))
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+
+
+_set_model_env(Settings().models_dir)
 
 
 @lru_cache(maxsize=1)

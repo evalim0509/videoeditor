@@ -52,18 +52,22 @@ def confidence_label(cat: str, peak: float) -> str:
     return "faint"
 
 
-def make_preview(video: "Path", items: list[tuple[str, float]], out: "Path",
+def make_preview(video: "Path | None", items: list[tuple], out: "Path",
                  before: float = 1.0, after: float = 3.0) -> "Path":
-    """Concatenate short clips around each (label, t) with the label burned in (uses the proxy)."""
+    """Concatenate short clips around each (label, t[, video]) with the label burned in.
+
+    Uses proxies; ``video`` is the default source when an item doesn't name its own."""
     from pathlib import Path
 
     from .ffmpeg import run_ffmpeg
 
     args: list[str] = []
     parts = []
-    for i, (label, t) in enumerate(items):
+    for i, item in enumerate(items):
+        label, t = item[0], item[1]
+        src = item[2] if len(item) > 2 else video
         start = max(0.0, t - before)
-        args += ["-ss", f"{start:.3f}", "-t", f"{before + after:.3f}", "-i", str(video)]
+        args += ["-ss", f"{start:.3f}", "-t", f"{before + after:.3f}", "-i", str(src)]
         text = label.replace(":", r"\:").replace("'", "")
         parts.append(
             f"[{i}:v]scale=-2:480,setsar=1,fps=30,format=yuv420p,"

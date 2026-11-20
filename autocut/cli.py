@@ -254,6 +254,53 @@ def inspect(
         console.print(f"Preview written to [bold]{out}[/bold]")
 
 
+@app.command()
+def visual(
+    file: str = typer.Argument(..., help="File path or hash prefix."),
+    force: bool = typer.Option(False, help="Ignore the cache."),
+) -> None:
+    """CLIP embeddings at 1 fps + MediaPipe face positions (on the proxy, cached)."""
+    import time
+
+    from .visual import analyze as _analyze
+
+    m = _resolve(file)
+    t0 = time.time()
+    r = _analyze(m["hash"], force=force)
+    console.print(f"[bold]{Path(m['path']).name}[/bold]: {r['clip_frames']} CLIP frames, "
+                  f"{r['face_samples']} face samples, face visible in {r['seconds_with_face']}/"
+                  f"{r['clip_frames']} s  [dim]{time.time() - t0:.1f}s[/dim]")
+
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help='What to look for, e.g. "eating dumplings".'),
+    file: Optional[List[str]] = typer.Option(None, help="Limit to these files (default: all)."),
+    top: int = typer.Option(10, help="Number of results."),
+    preview: Optional[Path] = typer.Option(None, help="Write a video of the results to this path."),
+) -> None:
+    """Find moments in your footage that match a description (CLIP, fully offline)."""
+    from . import db
+    from .moments import make_preview, words_near
+    from .transcribe import fmt_ts, get_transcript
+    from .visual import search as _search
+
+    hashes = [_resolve(f)["hash"] for f in file] if file else None
+    with console.status("searching…"):
+        res = _search(query, hashes, top=top)
+    t = Table("#", "file", "time", "similarity", "said", title=f'"{query}"', title_justify="left")
+    items = []
+    for i, r in enumerate(res, 1):
+        m = db.get_media(r["hash"])
+        t.add_row(str(i), Path(m["path"]).name, fmt_ts(r["t"]), f"{r['score']:.3f}",
+                  words_near(get_transcript(r["hash"]), r["t"] - 1, r["t"] + 2)[:50])
+        items.append((f"#{i} {fmt_ts(r['t'])} {r['score']:.2f}", r["t"] + 0.5, m["proxy_path"]))
+    console.print(t)
+    if preview and items:
+        out = make_preview(None, items, preview, before=1.0, after=2.0)
+        console.print(f"Preview written to [bold]{out}[/bold]")
+
+
 def main() -> None:  # pragma: no cover
     app()
 

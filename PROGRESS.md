@@ -8,7 +8,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 2. Ingest: hashing, ffprobe metadata, 480p CFR proxies, SQLite, HDR/rotation/VFR handling
 - [x] 3. Transcription (faster-whisper, word timestamps, hardware-based model size)
 - [x] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirmed by user, energy re-tuned from feedback
-- [ ] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
+- [x] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
 - [ ] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
 - [ ] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
 - [ ] 8. Voice input (server endpoint + CLI)
@@ -118,3 +118,22 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   lively moments). Watch item: 2:24 ("boarding at 2…") ranks 4th — may be the same flat moment.
 - Laughter: scores below ~0.01 are noise (1:10 = 0.009, same level as accepted #6–#10), so the
   selector treats faint laughter (<0.1) as a minor signal only.
+
+### Phase 5 — visual analysis
+- CLIP: open_clip **ViT-B-32 / LAION-2B** (fast on CPU, 512-d). One frame per second sampled at the
+  middle of each second (t = i + 0.5) from the proxy, full frame (CLIP transform resizes/crops).
+  Stored as float16 blob (`clip / 1:ViT-B-32:laion2b_s34b_b79k`). Query = mean of "q" and
+  "a photo of q" text embeddings; cosine similarity; peaks with 3 s suppression.
+- `autocut search "query" [--file F] [--top N] [--preview out.mp4]` across all ingested footage.
+  Verified: "close-up of food in a bowl" → 0:19 / 0:26 (holding dumplings to the camera, no face);
+  "eating a dumpling with chopsticks" → 1:26, 1:08, 1:20, 1:39 — all four frames checked visually ✔.
+- Faces: MediaPipe Tasks `FaceDetector` (BlazeFace short-range, suited to selfie/vlog distance) at
+  4 fps on the proxy; normalised boxes sorted by size; per-second face count + largest face area.
+  Verified by drawing boxes on 6 frames — all on the face, incl. partially covered by food ✔.
+  Face visible 145/149 s; the gaps (0:17–0:26) are exactly the food close-ups.
+- MediaPipe 1.2 only ships the Tasks API (no `solutions`); on Linux it needs `libegl1` (installed in
+  the container; desktop OSes already have it).
+- **Offline guarantee**: model cache env vars (HF_HOME/TORCH_HOME) are now set at import time —
+  previously huggingface_hub was imported first and cached to ~/.cache. CLIP weights are resolved
+  to a local file path before open_clip sees them. Verified by loading CLIP, Whisper, PANNs and the
+  face detector with the network proxy pointed at a dead port ✔.
