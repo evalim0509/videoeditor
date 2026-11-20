@@ -41,3 +41,8 @@ jinja2>=3.1
 # --- dev / tests ---
 pytest>=8
 httpx>=0.27
+# used only by tests to independently read back the FCPXML / EDL / Premiere exports
+opentimelineio>=0.17
+otio-fcpx-xml-adapter
+otio-fcp-adapter
+otio-cmx3600-adapter

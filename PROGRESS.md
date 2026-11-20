@@ -18,7 +18,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 12. `autocut run` one-command pipeline
 - [x] 13. Mobile-first web app / PWA
 - [x] 14. Review screen
-- [ ] 15. FCPXML + EDL export
+- [x] 15. FCPXML + EDL export
 - [ ] 16. Phone access via Wi-Fi + Tailscale HTTPS — **[ME]** phone walkthrough
 - [ ] 17. Auto-start, launcher, desktop shortcut
 
@@ -377,3 +377,22 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   swipe-left remove, caption edit; re-render → 19.37 s video = edited list total. Decision log rows
   written. Bugs found & fixed: unconstrained `<video>` on the review page overflowed horizontally
   (now global video/img sizing + no horizontal scroll); sheets had no visible close → "Done" button.
+
+### Phase 15 — export to editing apps
+- `autocut/export.py` + `autocut export sel.json -o DIR [--name X]`; web: "Export for editing apps"
+  sheet on each edit (zip with everything + README, or single files) via
+  `GET /api/projects/{pid}/edits/{eid}/export?format=zip|fcpxml|premiere|edl|srt`.
+- Formats (all reference the ORIGINAL files, frame-accurate in/outs identical to the renderer):
+  - **FCPXML 1.8** (Final Cut Pro, DaVinci Resolve) — 1.8 chosen over 1.9 because the file path
+    lives on the asset (`src`), which more importers read (1.9's `media-rep` wasn't picked up by
+    OpenTimelineIO's reader).
+  - **CMX3600 EDL** (Premiere, Resolve, Avid…), NDF, record timeline from 01:00:00:00,
+    `FROM CLIP NAME` + source path comments. iPhone files carry no timecode → source TC 00:00:00:00.
+  - **FCP7 XML / xmeml v5** (Premiere's most reliable timeline import), linked V + 2 A tracks.
+  - **SRT** captions (same chunking as burned-in captions, corrected transcript).
+  - Punch-ins / crops / colour LUT are render-time effects and not exported (one event per clip).
+- Verification: exports read back with **OpenTimelineIO** (independent implementation; dev-only
+  dependency): FCPXML, Premiere XML and EDL all give the same 11 clips with frame-exact cut points and
+  63.233 s total = the rendered video; media path resolves. Tests: `tests/test_export.py`.
+- Found & fixed: SRT export needlessly loaded the full analysis stack (models) — analysis is now
+  only loaded when beat sync / punch-ins need it.

@@ -266,7 +266,9 @@ def _ass_time(t: float) -> str:
 def build_captions(segments: list[Segment], fps: float, size: tuple[int, int],
                    profile: StyleProfile | None, path: Path, max_words: int = 6,
                    max_len: float = 3.5, max_gap: float = 0.9, max_chars: int = 30,
-                   options=None) -> int:
+                   options=None, collect: list | None = None) -> int:
+    """Write captions as ASS. If `collect` is given, plain (start, end, text) lines on the output
+    timeline are appended to it too (used for SRT export)."""
     """Word-timed karaoke captions on the output timeline. Returns the number of caption events."""
     from .corrections import effective_transcript as get_transcript
     from .options import RenderOptions
@@ -386,6 +388,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     parts.append(f"{{\\kf{cs}}}{word}")
                 else:                                     # plain line, appears whole
                     parts.append(word)
+            if collect is not None:
+                collect.append((round(start, 3), round(end, 3),
+                                " ".join(cased(w[2]) for w in ch)))
             events.append(f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Caption,,0,0,0,,"
                           + " ".join(parts))
     path.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
@@ -405,7 +410,8 @@ def build_segments(selection: dict, profile: StyleProfile | None,
     beat = bool(profile and profile.beat_synced) and (options is None or options.beat_sync)
     punch_count = beat_moves = 0
     for ci, c in enumerate(selection["clips"]):
-        fa = fas.setdefault(c["hash"], FileAnalysis(c["hash"]))
+        # the full analysis is only needed for beat sync / punch-ins (not e.g. for SRT export)
+        fa = fas.setdefault(c["hash"], FileAnalysis(c["hash"])) if (beat or seg_len) else None
         start, end = float(c["start"]), float(c["end"])
         if beat:
             ns, ne = snap_to_beats(fa, start), snap_to_beats(fa, end)
@@ -413,7 +419,7 @@ def build_segments(selection: dict, profile: StyleProfile | None,
                 beat_moves += (ns != start) + (ne != end)
                 start, end = ns, ne
         points = plan_punch_ins(fa, start, end, seg_len) if seg_len else []
-        fps = float(fa.media["meta"].get("fps") or 30.0)
+        fps = float(db.get_media(c["hash"])["meta"].get("fps") or 30.0)
         # snap splits to the frame grid so contiguous pieces join without a dropped/duplicated frame
         start = round(start * fps) / fps
         points = [round(p * fps) / fps for p in points]

@@ -340,6 +340,7 @@ function renderEdits(p) {
   if (sig !== current.sig) {
     current.sig = sig;
     box.innerHTML = edits.length ? edits.map((e) => editCard(p, e)).join("") : `<p class="muted small">Nothing yet. Add footage, say what you want, then tap “Make my edit”.</p>`;
+    $$("[data-export]", box).forEach((b) => b.onclick = () => openExport(p.id, b.dataset.export));
     $$("[data-del-edit]", box).forEach((b) => b.onclick = async () => {
       if (!confirm("Delete this edit?")) return;
       await api(`/api/projects/${p.id}/edits/${b.dataset.delEdit}`, { method: "DELETE" }); refreshProject();
@@ -366,6 +367,7 @@ function editCard(p, e) {
       <div class="actions">
         <a class="btn primary small-btn" href="${base}?quality=full&download=1" download>Download full quality</a>
         <a class="btn small-btn" href="#/p/${p.id}/review/${e.id}">Review &amp; change</a>
+        <button class="btn small-btn" data-export="${e.id}">Export for editing apps</button>
       </div>
       <p class="small muted" style="margin:8px 0 0">iPhone: after downloading, open it from Files → Share → Save Video to put it in Photos.</p></div>`;
   }
@@ -375,6 +377,19 @@ function editCard(p, e) {
       <div class="small muted" id="stage-${e.id}">Waiting for the computer…</div>
       <div class="bar" id="prog-${e.id}"><i></i></div>
       <p class="small muted" style="margin:8px 0 0">You can lock your phone — the computer keeps working and this updates when you come back.</p></div>`;
+}
+
+function openExport(pid, eid) {
+  const base = `/api/projects/${pid}/edits/${eid}/export?format=`;
+  sheet(`<h2>Export for editing apps</h2>
+    <p class="sub">Open this edit in a pro editor and keep working. The files point at your original videos on the computer.</p>
+    <div class="stack">
+      <a class="btn primary block" href="${base}zip" download>Everything (zip)</a>
+      <a class="btn block" href="${base}fcpxml" download>Final Cut Pro / DaVinci Resolve (.fcpxml)</a>
+      <a class="btn block" href="${base}premiere" download>Premiere Pro (.xml)</a>
+      <a class="btn block" href="${base}edl" download>Any editor (.edl)</a>
+      <a class="btn block" href="${base}srt" download>Captions (.srt)</a>
+    </div>`);
 }
 
 function notifyDone(e) {

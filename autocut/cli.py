@@ -564,6 +564,22 @@ def serve(
     uvicorn.run(create_app(), host=host, port=port, log_level="warning", timeout_keep_alive=30)
 
 
+@app.command()
+def export(
+    selection: Path = typer.Argument(..., exists=True, help="Edit list JSON (from select/run)."),
+    out_dir: Path = typer.Option(Path("output"), "--out-dir", "-o"),
+    name: Optional[str] = typer.Option(None, help="Base file name (default: the JSON's name)."),
+) -> None:
+    """Export the timeline as FCPXML (Final Cut/Resolve), EDL, Premiere XML and SRT captions."""
+    from .export import FORMATS, export_all
+
+    sel = json.loads(selection.read_text())
+    base = name or selection.stem
+    for p, (fmt, (_, desc)) in zip(export_all(sel, out_dir, base, sel.get("instruction") or base),
+                                   FORMATS.items()):
+        console.print(f"✓ {p}  [dim]({desc})[/dim]")
+
+
 def _ts(s: str) -> float:
     """'1:43.5' or '103.5' → seconds."""
     if ":" in s:

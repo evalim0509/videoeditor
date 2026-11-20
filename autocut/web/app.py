@@ -341,6 +341,32 @@ def create_app() -> FastAPI:
                             filename=name if download else None,
                             content_disposition_type="attachment" if download else "inline")
 
+    @app.get("/api/projects/{pid}/edits/{eid}/export", dependencies=user)
+    def export_edit(pid: str, eid: str, format: str = "zip"):
+        import json as _json
+        import re as _re
+
+        from ..export import FORMATS, export_zip, render_format
+
+        p = _project_or_404(pid)
+        e = P.find_edit(p, eid)
+        if not e or not e.get("selection"):
+            raise HTTPException(404, "Edit not found.")
+        sel = _json.loads(Path(e["selection"]).read_text())
+        name = _re.sub(r"[^\w\-]+", "_", f"{p['name']}_{eid}").strip("_")
+        title = f"{p['name']} — {e['instruction']}"
+        if format == "zip":
+            data, ext, mt = export_zip(sel, title, name), ".zip", "application/zip"
+        elif format in FORMATS:
+            data = render_format(sel, format, title).encode("utf-8")
+            ext = FORMATS[format][0]
+            mt = {"fcpxml": "application/xml", "premiere": "application/xml", "edl": "text/plain",
+                  "srt": "application/x-subrip"}[format]
+        else:
+            raise HTTPException(400, "Unknown format.")
+        return Response(data, media_type=mt,
+                        headers={"Content-Disposition": f'attachment; filename="{name}{ext}"'})
+
     @app.post("/api/projects/{pid}/edits/{eid}/render", dependencies=user)
     def rerender(pid: str, eid: str):
         p = _project_or_404(pid)
