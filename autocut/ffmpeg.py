@@ -69,3 +69,16 @@ def available_filters() -> set[str]:
         if len(parts) >= 3 and len(parts[0]) == 3:
             names.add(parts[1])
     return names
+
+
+def load_audio(path: Path, sample_rate: int = 16000, af: str | None = None):
+    """Decode any audio/video file to mono float32 numpy at ``sample_rate`` using FFmpeg."""
+    import numpy as np
+
+    cmd = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-i", str(path),
+           "-vn", *(["-af", af] if af else []),
+           "-ac", "1", "-ar", str(sample_rate), "-f", "s16le", "-acodec", "pcm_s16le", "-"]
+    p = subprocess.run(cmd, capture_output=True)
+    if p.returncode != 0:
+        raise FFmpegError(f"could not decode audio from {path}: {p.stderr.decode()[-500:]}")
+    return np.frombuffer(p.stdout, np.int16).astype(np.float32) / 32768.0

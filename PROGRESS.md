@@ -6,7 +6,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 
 - [x] 1. Project skeleton, requirements, CLI (`autocut --help`)
 - [x] 2. Ingest: hashing, ffprobe metadata, 480p CFR proxies, SQLite, HDR/rotation/VFR handling
-- [ ] 3. Transcription (faster-whisper, word timestamps, hardware-based model size)
+- [x] 3. Transcription (faster-whisper, word timestamps, hardware-based model size)
 - [ ] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirm top laughter/energy moments
 - [ ] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
 - [ ] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
@@ -40,9 +40,9 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - SQLite cache: tables `media`, `paths` (path→hash with size+mtime, so unchanged files are never
   re-hashed), `analysis` (JSON) and `blobs` (binary, e.g. embeddings), keyed by
   `(hash, stage, version)`. WAL mode for concurrent web + worker access.
-- Hardware → Whisper model: NVIDIA ≥8 GB → large-v3 fp16; Apple Silicon → medium int8 on CPU
-  (CTranslate2 has no Metal); CPU-only → small int8 (medium if ≥12 cores). Override with
-  `AUTOCUT_WHISPER_MODEL`.
+- Hardware → Whisper model (revised in phase 3): NVIDIA ≥10 GB → large-v3 fp16, ≥5 GB →
+  large-v3-turbo fp16; Apple Silicon / CPU with ≥8 GB RAM → large-v3-turbo int8 (CTranslate2 has no
+  Metal); smaller machines → small int8. Override with `AUTOCUT_WHISPER_MODEL`.
 - PyTorch installed from PyPI (the CPU-only index was unreachable here); README documents the
   smaller CPU wheel for CPU-only machines.
 - AudioSet class-label CSV is bundled in `autocut/assets/` so PANNs never needs `wget` at runtime
@@ -64,3 +64,23 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   4 ms); reference_01.mp4 (rotation 90 handled → 1044x480, VFR 46.8 → 30 fps proxy).
 - Noted for phase 6: the reference is a phone screen recording with black pillarbox bars; the style
   analyzer will auto-crop them (cropdetect) before measuring.
+
+### Phase 3 — transcription
+- faster-whisper, `word_timestamps=True`, beam 5, `condition_on_previous_text=False` (avoids
+  repetition loops). Audio is decoded by **FFmpeg** (PyAV in faster-whisper 1.2 is incompatible with
+  the installed `av`, and the rules say FFmpeg does media work anyway).
+- The test clip is hard: quiet speech, restaurant noise, accented English. Measured on it:
+  - default Silero VAD threw most speech away (54 words). Fix: speech clean-up filter before Whisper
+    (`highpass 90 Hz, lowpass 7.5 kHz, dynaudnorm`) + gentler VAD (threshold 0.25, 400 ms padding).
+  - single-window language detection said "en 40 %" / "Javanese" depending on the window. Fix: vote
+    over 5 windows spread across the file → en 87 %.
+  - `large-v3-turbo` int8 beat `medium` on both accuracy and speed (29 s vs 69 s per 75 s audio on
+    4 CPU cores) → new default on any machine with ≥8 GB RAM. Full 2:29 clip: 69 s, 121 words.
+- Hallucination filter: drop segments with compression ratio > 2.4, avg logprob < -1.5, or
+  no-speech > 0.6 with logprob < -1.0; drop the 3rd+ identical line in a row.
+- Sentences are built from words (end punctuation or ≥0.8 s pause; run-ons > 15 s split at the
+  largest pause). They're the snapping units for "never cut mid-word".
+- Cache key `transcript / 2:<model>:<lang>`; re-running is instant (0.2 s).
+- Known limitation: a stretch around 1:04–1:32 of the test clip (eating, noisy) yields short
+  low-confidence lines that may be partly invented; word probabilities are stored so the selector
+  can down-weight them.

@@ -109,6 +109,63 @@ def ingest(
                                f"{m['video_codec']} {m['duration']:.1f}s  {'; '.join(notes)}")
 
 
+def _resolve(ref: str) -> dict:
+    """Find an ingested file by path or hash prefix; ingest it on the fly if it's a new path."""
+    from . import db
+
+    m = db.find_media(ref)
+    if m is None and Path(ref).is_file():
+        from .ingest import ingest_file
+
+        console.print(f"[dim]Ingesting {ref} first…[/dim]")
+        ingest_file(Path(ref))
+        m = db.find_media(ref)
+    if m is None:
+        console.print(f"[red]Unknown media: {ref}[/red] (give a file path or a hash prefix)")
+        raise typer.Exit(1)
+    return m
+
+
+@app.command()
+def models(
+    whisper: List[str] = typer.Option(None, help="Whisper sizes to fetch (default: hardware pick)."),
+) -> None:
+    """Download all model weights once (Whisper, PANNs, CLIP, face detector). Then fully offline."""
+    from .hardware import detect
+    from .models import download_all
+
+    for line in download_all(whisper or [detect().whisper_model]):
+        console.print("✓ " + line)
+
+
+@app.command()
+def transcribe(
+    file: str = typer.Argument(..., help="File path or hash prefix."),
+    model: Optional[str] = typer.Option(None, help="Whisper size (tiny/base/small/medium/large-v3)."),
+    language: Optional[str] = typer.Option(None, help="Force a language code, e.g. 'en'."),
+    force: bool = typer.Option(False, help="Ignore the cache."),
+    words: bool = typer.Option(False, help="Print word-level timestamps."),
+) -> None:
+    """Transcribe a file with faster-whisper (word timestamps, cached)."""
+    import time
+
+    from .transcribe import fmt_ts, transcribe as _transcribe
+
+    m = _resolve(file)
+    t0 = time.time()
+    tr = _transcribe(m["hash"], model_size=model, language=language, force=force)
+    console.print(f"[bold]{Path(m['path']).name}[/bold]  language={tr['language']} "
+                  f"({tr['language_prob']:.0%})  model={tr['model']}  "
+                  f"{len(tr['words'])} words, {len(tr['sentences'])} sentences  "
+                  f"[dim]{time.time() - t0:.1f}s[/dim]")
+    for s in tr["sentences"]:
+        console.print(f"[cyan]{fmt_ts(s['start'])}–{fmt_ts(s['end'])}[/cyan]  {s['text']}")
+        if words:
+            ws = tr["words"][s["first_word"]: s["last_word"] + 1]
+            console.print("    [dim]" + " ".join(f"{w['word'].strip()}@{w['start']:.2f}"
+                                                for w in ws) + "[/dim]")
+
+
 def main() -> None:  # pragma: no cover
     app()
 

@@ -97,20 +97,22 @@ def detect() -> Hardware:
     if nv:
         accel, torch_dev, gpu_name, vram = "cuda", "cuda", nv[0], round(nv[1], 1)
         w_dev, w_comp = "cuda", "float16"
-        w_model = "large-v3" if vram >= 8 else ("medium" if vram >= 5 else "small")
+        w_model = "large-v3" if vram >= 10 else ("large-v3-turbo" if vram >= 5 else "small")
         if "h264_nvenc" in encoders:
             hwenc = "h264_nvenc"
     elif system == "darwin" and arch in ("arm64", "aarch64"):
         accel, torch_dev, gpu_name, vram = "apple_silicon", "mps", "Apple GPU", None
-        # CTranslate2 has no Metal backend; Apple CPUs are fast enough for medium int8.
+        # CTranslate2 has no Metal backend; Apple CPUs run turbo int8 comfortably.
         w_dev, w_comp = "cpu", "int8"
-        w_model = "medium" if ram >= 16 else "small"
+        w_model = "large-v3-turbo" if ram >= 8 else "small"
         if "h264_videotoolbox" in encoders:
             hwenc = "h264_videotoolbox"
     else:
         accel, torch_dev, gpu_name, vram = "cpu", "cpu", None, None
         w_dev, w_comp = "cpu", "int8"
-        w_model = "medium" if (cores >= 12 and ram >= 16) else "small"
+        # large-v3-turbo (4 decoder layers) is both faster and far more accurate than medium on
+        # CPU int8: measured 29 s vs 69 s for 75 s of noisy phone audio on 4 cores.
+        w_model = "large-v3-turbo" if ram >= 8 else "small"
 
     return Hardware(os=system, os_pretty=pretty, arch=arch, cpu_cores=cores, ram_gb=ram,
                     accelerator=accel, gpu_name=gpu_name, gpu_vram_gb=vram,
