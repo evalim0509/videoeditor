@@ -75,3 +75,13 @@ def test_captions_word_timed(tmp_home, tmp_path):
                    options=RenderOptions(caption_style="karaoke", caption_case="lower"))
     k = [l for l in out.read_text().splitlines() if l.startswith("Dialogue")][0]
     assert "\\kf" in k and "is that chili oil?" in re.sub(r"\{[^}]*\}", "", k)
+
+
+def test_punch_in_spacing_never_too_frequent():
+    from autocut.style import StyleProfile
+    from autocut.stylematch import target_segment_length
+
+    fast = StyleProfile(name="x", cuts_per_minute=35, shot_median=1.2)
+    assert target_segment_length(fast) >= 4.0
+    assert target_segment_length(fast, spacing=7.0) == 7.0
+    assert target_segment_length(StyleProfile(name="one take", cuts_per_minute=0)) is None

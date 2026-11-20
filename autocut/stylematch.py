@@ -163,10 +163,15 @@ def crop_filter(meta: dict, seg: Segment, aspect: float) -> str | None:
 
 # ------------------------------------------------------------------ pacing & beats
 
-def target_segment_length(profile: StyleProfile | None) -> float | None:
+def target_segment_length(profile: StyleProfile | None, spacing: float | None = None) -> float | None:
+    """Seconds between punch-in zoom cuts. `spacing` (from RenderOptions) wins; otherwise derived
+    from the reference's pacing but never closer than 4 s (user feedback: every ~2 s was too
+    frequent for vlogs)."""
+    if spacing:
+        return float(max(1.5, spacing))
     if profile is None or profile.cuts_per_minute < 6:
         return None  # reference is (nearly) one take: no extra cuts
-    return float(np.clip(profile.shot_median * 1.8, 1.6, 4.0))
+    return float(np.clip(profile.shot_median * 3.3, 4.0, 10.0))
 
 
 def plan_punch_ins(fa, start: float, end: float, seg_len: float) -> list[float]:
@@ -395,7 +400,8 @@ def build_segments(selection: dict, profile: StyleProfile | None,
 
     fas: dict[str, FileAnalysis] = {}
     segs: list[Segment] = []
-    seg_len = target_segment_length(profile) if (options is None or options.punch_ins) else None
+    seg_len = (target_segment_length(profile, getattr(options, "punch_in_spacing", None))
+               if (options is None or options.punch_ins) else None)
     beat = bool(profile and profile.beat_synced) and (options is None or options.beat_sync)
     punch_count = beat_moves = 0
     for ci, c in enumerate(selection["clips"]):

@@ -22,6 +22,7 @@ class RenderOptions(BaseModel):
     caption_scale: float = 1.0                   # 1.0 = sized like the reference
     caption_position: Literal["auto", "bottom", "middle", "top"] = "auto"
     punch_ins: bool = True                       # zoom cuts inside long clips (pacing)
+    punch_in_spacing: Optional[float] = None     # seconds between zoom cuts; None = auto (≥ 4 s)
     face_follow: bool = True                     # keep faces framed when cropping
     color_match: bool = False                    # move colours toward the reference look
     beat_sync: bool = True                       # cut on the beat when the reference does

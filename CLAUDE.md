@@ -30,6 +30,7 @@ computer does all processing.
   instruction explicitly asks for another shape.
 - Captions are plain lines that appear whole — no word-by-word highlighting.
 - Don't change the colour unless asked (colour matching is opt-in).
+- Punch-in zoom cuts are sparse: no closer than ~4 s apart by default (every ~2 s was too frequent).
 
 ## How to work
 

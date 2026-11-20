@@ -440,6 +440,7 @@ def render(
     caption_scale: Optional[float] = typer.Option(None, help="Caption size multiplier, e.g. 1.3"),
     caption_position: Optional[str] = typer.Option(None, help='"auto", "bottom", "middle", "top".'),
     punch_ins: Optional[bool] = typer.Option(None, "--punch-ins/--no-punch-ins"),
+    punch_in_spacing: Optional[float] = typer.Option(None, help="Seconds between zoom cuts (0 = auto)."),
     color_match: Optional[bool] = typer.Option(None, "--color-match/--no-color-match"),
 ) -> None:
     """Render a selection from the originals, matched to a style. Every setting can be overridden
@@ -461,7 +462,8 @@ def render(
     overrides = {"aspect": (None if aspect == "source" else aspect) if aspect else ...,
                  "captions": captions, "caption_style": caption_style, "caption_case": caption_case,
                  "caption_scale": caption_scale, "caption_position": caption_position,
-                 "punch_ins": punch_ins, "color_match": color_match}
+                 "punch_ins": punch_ins, "color_match": color_match,
+                 "punch_in_spacing": (punch_in_spacing or None) if punch_in_spacing is not None else None}
     for k, v in overrides.items():
         if v is not None and v is not ...:
             setattr(opts, k, v)
