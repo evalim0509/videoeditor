@@ -9,7 +9,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 3. Transcription (faster-whisper, word timestamps, hardware-based model size)
 - [x] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirmed by user, energy re-tuned from feedback
 - [x] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
-- [ ] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
+- [x] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
 - [ ] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
 - [ ] 8. Voice input (server endpoint + CLI)
 - [ ] 9. Clip selector — **[ME]** confirm clips for "funny 60 seconds"
@@ -137,3 +137,27 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
   previously huggingface_hub was imported first and cached to ~/.cache. CLIP weights are resolved
   to a local file path before open_clip sees them. Verified by loading CLIP, Whisper, PANNs and the
   face detector with the network proxy pointed at a dead port ✔.
+
+### Phase 6 — style analyzer
+- `autocut style <refs...> --name NAME` → `data/presets/NAME.json` (pydantic `StyleProfile`) +
+  plain-language explanation; `--show NAME`, `--list`. Per-reference measurements cached
+  (`style_ref / 2`).
+- **Content crop**: FFmpeg `cropdetect` failed on the reference because its side bars are YouTube
+  "ambient mode" glow (coloured, blurred), not black. New detector uses *detail* (Sobel magnitude
+  median over ~30 frames) instead of darkness, requires symmetric bar pairs (a low-detail table at
+  the bottom of the test clip was otherwise cropped), snaps to standard aspects within 3 %.
+  Reference → 856x480 @ x=94 (16:9) ✔; test clip → no crop ✔.
+- **Captions**: tried (1) gradient/Otsu blobs — found nothing; (2) CLIP zero-shot — too weak
+  (0.02 vs 0.00 with overlap). Final: top-hat/black-hat thin strokes → character blobs → lines with
+  ≥5 characters, width ≥10 % of frame (rejects teeth with braces and tiny background signage),
+  uniform near-white/near-black stroke colour, and persistence (same box in an adjacent 0.5 s
+  sample). Reference: text in 22 % of frames at 91–93 % height ✔; test clip: 1.3 % (one blip) ✔.
+  `captions_present` = share ≥ 12 % and ≥ 60 % of boxes in one vertical band.
+- Beat sync: a cut within 80 ms of a beat counts; compared with the chance rate
+  (2·80 ms / beat interval); synced if music share > 30 % and on-beat ≥ max(35 %, 1.6× chance).
+- Look: mean luma, luma std (contrast), HSV saturation, Lab mean/std (for colour matching in
+  phase 11), warmth = Lab b*.
+- Result `paris_vlog`: fast pacing (median shot 1.2 s, 35 cuts/min, most shots 0.9–2.9 s), 16:9,
+  music 84 % of the time at ~134 BPM, cuts *not* beat-synced (49 % vs 36 % chance), small captions
+  at the bottom 22 % of the time, -17 LUFS, evenly exposed, moderate contrast, natural colours,
+  warm tint.

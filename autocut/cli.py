@@ -301,6 +301,35 @@ def search(
         console.print(f"Preview written to [bold]{out}[/bold]")
 
 
+@app.command()
+def style(
+    refs: List[Path] = typer.Argument(None, help="Reference videos or folders."),
+    name: str = typer.Option("default", help="Preset name to save as."),
+    show: Optional[str] = typer.Option(None, help="Explain an existing preset."),
+    list_: bool = typer.Option(False, "--list", help="List saved presets."),
+) -> None:
+    """Analyse reference videos into a StyleProfile preset and explain it in plain language."""
+    from .style import analyze_references, explain, list_profiles, load_profile, preset_path
+
+    if list_:
+        for n in list_profiles():
+            console.print(n)
+        return
+    if show:
+        p = load_profile(show)
+    else:
+        if not refs:
+            console.print("[red]Give reference videos/folders, or --show NAME / --list.[/red]")
+            raise typer.Exit(1)
+        with console.status("analysing references (cached results are reused)…"):
+            p = analyze_references(refs, name)
+        console.print(f"Saved preset [bold]{p.name}[/bold] → {preset_path(p.name)}")
+    console.print(f"\n[bold]Style “{p.name}”[/bold] from {len(p.references)} reference(s), "
+                  f"{p.total_seconds:.0f}s total:")
+    for line in explain(p):
+        console.print(f"  • {line}")
+
+
 def main() -> None:  # pragma: no cover
     app()
 
