@@ -7,7 +7,7 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - [x] 1. Project skeleton, requirements, CLI (`autocut --help`)
 - [x] 2. Ingest: hashing, ffprobe metadata, 480p CFR proxies, SQLite, HDR/rotation/VFR handling
 - [x] 3. Transcription (faster-whisper, word timestamps, hardware-based model size)
-- [ ] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirm top laughter/energy moments
+- [ ] 4. Audio + shot analysis, `autocut inspect` — **[ME]** confirm top laughter/energy moments  ← built & verified, waiting for user confirmation
 - [ ] 5. Visual analysis: CLIP embeddings at 1 fps, `autocut search`, mediapipe faces
 - [ ] 6. Style analyzer → StyleProfile preset (+ plain-language explanation)
 - [ ] 7. Intent parser → EditSpec (rule-based, YAML synonyms, 20 tests)
@@ -84,3 +84,23 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - Known limitation: a stretch around 1:04–1:32 of the test clip (eating, noisy) yields short
   low-confidence lines that may be partly invented; word probabilities are stored so the selector
   can down-weight them.
+
+### Phase 4 — audio + shots + inspect
+- Shots: PySceneDetect `AdaptiveDetector` on the proxy, min shot 0.6 s. Test clip → 1 shot (correct:
+  one continuous selfie take, 4.5 s). Reference → 36 shots (sanity check that cuts are detected).
+- PANNs `Cnn14` (mAP 0.431) clip-wise on 2 s windows centred on each second, hop 1 s; category score
+  = max over member AudioSet classes (laughter = Laughter/Giggle/Snicker/Belly laugh/Chuckle/Baby
+  laughter; cheering = Cheering/Crowd; applause = Applause/Clapping; shouting = Shout/Yell/Scream/
+  Bellow/Whoop/Children shouting; speech = Speech/Conversation/Narration). Checkpoint is loaded
+  directly (no `wget`), 17 s for the 2:29 clip on CPU.
+- Tried and rejected: loudness normalisation before PANNs (no change), and the frame-level
+  `Cnn14_DecisionLevelMax` SED model (same ranking, lower scores).
+- librosa per second: RMS dBFS, onset strength, `energy` = 0.6·rank(RMS) + 0.4·rank(onset) (0..1
+  within the file); integrated LUFS (pyloudnorm); beat tracking (tempo + beat times).
+- Test clip findings: very quiet recording (-35.7 LUFS), speech in 141/150 s, music clearly present
+  around 0:10. Laughter is only *faint* everywhere (max 0.046 at 0:39, then 1:00) — both PANNs models
+  agree on the ranking, so the selector will use laughter **relative to the file** plus an absolute
+  bonus when it's clearly present (≥0.3).
+- `autocut inspect <file> [--preview out.mp4]`: tables of top moments with strength labels
+  (clear/possible/faint for events; high/medium/low for energy) and the words spoken around each;
+  `--preview` renders a labelled montage of the top moments from the proxy for quick checking.

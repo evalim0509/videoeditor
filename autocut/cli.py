@@ -166,6 +166,94 @@ def transcribe(
                                                 for w in ws) + "[/dim]")
 
 
+@app.command()
+def shots(
+    file: str = typer.Argument(..., help="File path or hash prefix."),
+    force: bool = typer.Option(False, help="Ignore the cache."),
+) -> None:
+    """Detect shot changes with PySceneDetect (on the proxy, cached)."""
+    from .shots import shots as _shots
+    from .transcribe import fmt_ts
+
+    m = _resolve(file)
+    r = _shots(m["hash"], force=force)
+    console.print(f"[bold]{Path(m['path']).name}[/bold]: {r['count']} shot(s)")
+    for i, s in enumerate(r["shots"], 1):
+        console.print(f"  {i:3d}  {fmt_ts(s['start'])} – {fmt_ts(s['end'])}  ({s['end'] - s['start']:.1f}s)")
+
+
+@app.command("audio")
+def audio_cmd(
+    file: str = typer.Argument(..., help="File path or hash prefix."),
+    force: bool = typer.Option(False, help="Ignore the cache."),
+) -> None:
+    """Per-second PANNs event scores (laughter, cheering, ...) + loudness/energy + beats."""
+    from .audio import EVENT_NAMES, analyze
+
+    m = _resolve(file)
+    r = analyze(m["hash"], force=force)
+    s = r["scores"]
+    console.print(f"[bold]{Path(m['path']).name}[/bold]: {r['seconds']} s, integrated "
+                  f"{r['integrated_lufs']} LUFS, peak {r['peak_dbfs']} dBFS, tempo {r['tempo']} BPM, "
+                  f"{len(r['beats'])} beats")
+    t = Table("event", "mean", "max", "seconds > 0.3")
+    for c in EVENT_NAMES + ["energy"]:
+        v = s[c]
+        t.add_row(c, f"{sum(v) / max(1, len(v)):.3f}", f"{max(v, default=0):.3f}",
+                  str(sum(1 for x in v if x > 0.3)))
+    console.print(t)
+
+
+@app.command()
+def inspect(
+    file: str = typer.Argument(..., help="File path or hash prefix."),
+    top: int = typer.Option(10, help="How many moments per category."),
+    categories: str = typer.Option("laughter,energy,cheering,applause,shouting,music,speech",
+                                   help="Comma-separated categories to list."),
+    preview: Optional[Path] = typer.Option(None, help="Also write a video of the top moments "
+                                           "(of the first two categories) to this .mp4 path."),
+) -> None:
+    """Run (or load cached) analyses and list the top moments of a file."""
+    from .audio import analyze
+    from .moments import confidence_label, make_preview, top_moments, words_near
+    from .shots import shots as _shots
+    from .transcribe import fmt_ts, transcribe as _transcribe
+
+    m = _resolve(file)
+    meta = m["meta"]
+    with console.status("analysing (cached results are reused)…"):
+        tr = _transcribe(m["hash"])
+        au = analyze(m["hash"])
+        sh = _shots(m["hash"])
+    console.print(f"[bold]{Path(m['path']).name}[/bold]  {meta['display_width']}x{meta['display_height']} "
+                  f"{meta['duration']:.1f}s  {meta.get('device') or ''}")
+    console.print(f"  speech: {len(tr['words'])} words ({tr['language']})   shots: {sh['count']}   "
+                  f"loudness: {au['integrated_lufs']} LUFS   tempo: {au['tempo']} BPM")
+    cats = [c.strip() for c in categories.split(",") if c.strip()]
+    preview_items: list[tuple[str, float]] = []
+    for cat in cats:
+        series = au["scores"].get(cat)
+        if series is None:
+            continue
+        moments = top_moments(series, k=top, min_gap=4)
+        t = Table(title=f"Top {cat} moments", title_justify="left")
+        t.add_column("#", justify="right")
+        t.add_column("time")
+        t.add_column("score", justify="right")
+        t.add_column("strength")
+        t.add_column("what's said around it")
+        for i, mo in enumerate(moments, 1):
+            t.add_row(str(i), fmt_ts(mo["t"]), f"{mo['peak']:.3f}", confidence_label(cat, mo["peak"]),
+                      words_near(tr, mo["t"] - 1.5, mo["t"] + 2.5)[:70])
+            if cat in cats[:2]:
+                preview_items.append((f"{cat} #{i}  {fmt_ts(mo['t'])}  {mo['peak']:.2f}", mo["t"]))
+        console.print(t)
+    if preview and preview_items:
+        with console.status("rendering preview…"):
+            out = make_preview(Path(m["proxy_path"]), preview_items, preview)
+        console.print(f"Preview written to [bold]{out}[/bold]")
+
+
 def main() -> None:  # pragma: no cover
     app()
 
