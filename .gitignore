@@ -1,7 +1,14 @@
-# Virtual environment
+# Virtual environment / Python
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Runtime data: SQLite cache, proxies, model weights, projects
+data/
 
 # Media files: keep the folders, not the (large) videos
 test_footage/*

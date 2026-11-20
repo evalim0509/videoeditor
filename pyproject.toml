@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autocut"
+version = "0.1.0"
+description = "Fully offline, local AI video editor driven from your phone"
+requires-python = ">=3.11"
+readme = "README.md"
+
+[project.scripts]
+autocut = "autocut.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["autocut*"]
+
+[tool.setuptools.package-data]
+autocut = ["assets/*", "config/*.yaml", "web/static/**/*", "web/templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
