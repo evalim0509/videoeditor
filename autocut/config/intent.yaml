@@ -157,3 +157,16 @@ caption_modifiers:
   - {label: "captions at the top", set: {caption_position: top}, phrases: [at the top, on top, top of the screen]}
   - {label: "captions in the middle", set: {caption_position: middle}, phrases: [in the middle, in the center, in the centre, centered, centred]}
   - {label: "captions at the bottom", set: {caption_position: bottom}, phrases: [at the bottom, bottom of the screen]}
+
+# Effects (the references decide by default; these words override)
+effect_options:
+  - {label: "sound effects", set: {sound_effects: true}, phrases: [add sound effects, with sound effects, sound effects, sfx, whooshes, whoosh sounds]}
+  - {label: "no sound effects", set: {sound_effects: false}, phrases: [no sound effects, without sound effects, no sfx, no whooshes]}
+  - {label: "stickers", set: {stickers: true}, phrases: [add stickers, with stickers, stickers, emojis, emoji stickers, add emojis, with emojis]}
+  - {label: "no stickers", set: {stickers: false}, phrases: [no stickers, without stickers, no emojis, no emoji, without emojis]}
+  - {label: "flash transitions", set: {flash: true}, phrases: [flash transitions, flashes, white flashes, flash cuts, with flashes]}
+  - {label: "no flashes", set: {flash: false}, phrases: [no flashes, no flash, no flash transitions]}
+  - {label: "shake effects", set: {shake: true}, phrases: [shake effects, camera shake, shakes, with shake]}
+  - {label: "no shake", set: {shake: false}, phrases: [no shake, no shakes, no camera shake]}
+  - {label: "no effects", set: {sound_effects: false, stickers: false, flash: false, shake: false}, phrases: [no effects, no fx, without effects, clean edit, keep it clean, no extras]}
+  - {label: "lots of effects", set: {sound_effects: true, stickers: true, flash: true}, phrases: [lots of effects, with effects, add effects, fun effects, all the effects]}

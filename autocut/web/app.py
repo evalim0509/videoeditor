@@ -322,6 +322,127 @@ def create_app() -> FastAPI:
             raise HTTPException(404, "Not found.")
         return J.queue_analyze(pid, item_id)
 
+    # ------------------------------------------------------------------ timeline editor
+    def _timeline_path(pid: str, eid: str) -> tuple[dict, dict, Path]:
+        p = _project_or_404(pid)
+        e = P.find_edit(p, eid)
+        if not e or not e.get("selection"):
+            raise HTTPException(404, "Edit not found.")
+        path = Path(e["timeline"]) if e.get("timeline") else Path(e["video"]).with_name("edit.timeline.json")
+        return p, e, path
+
+    def _profile_for(p: dict, sel: dict):
+        from ..style import list_profiles, load_profile
+
+        name = sel.get("style") or p.get("style")
+        return load_profile(name) if name and name in list_profiles() else None
+
+    def _with_media(pid: str, doc: dict) -> dict:
+        for c in doc["clips"]:
+            c["proxy"] = f"/api/projects/{pid}/proxy/{c['hash']}"
+            c["thumb"] = f"/api/projects/{pid}/thumb?hash={c['hash']}&t="
+            c["src_duration"] = db_meta_duration(c["hash"])
+        return doc
+
+    def db_meta_duration(h: str) -> float:
+        from .. import db as _db
+
+        m = _db.get_media(h)
+        return float(m["meta"]["duration"]) if m else 0.0
+
+    @app.get("/api/projects/{pid}/edits/{eid}/timeline", dependencies=user)
+    async def get_timeline(pid: str, eid: str):
+        import json as _json
+
+        from ..timeline import build_document, load as load_doc, save as save_doc
+
+        p, e, path = _timeline_path(pid, eid)
+        if path.exists():
+            doc = load_doc(path)
+        else:  # edits made before the timeline existed
+            sel = _json.loads(Path(e["selection"]).read_text())
+            doc = await run_in_threadpool(build_document, sel, None, _profile_for(p, sel))
+            save_doc(path, doc)
+            J._set_edit(pid, eid, timeline=str(path))  # noqa: SLF001
+        doc["edit"] = {k: e.get(k) for k in ("id", "instruction", "status", "rendered", "finished")}
+        return _with_media(pid, doc)
+
+    @app.put("/api/projects/{pid}/edits/{eid}/timeline", dependencies=user)
+    async def put_timeline(pid: str, eid: str, request: Request):
+        from ..timeline import normalize, save as save_doc
+
+        p, e, path = _timeline_path(pid, eid)
+        doc = await request.json()
+        for k in ("edit",):
+            doc.pop(k, None)
+        for c in doc.get("clips", []):
+            for k in ("proxy", "thumb", "src_duration"):
+                c.pop(k, None)
+        try:
+            doc = await run_in_threadpool(normalize, doc)
+        except Exception as ex:
+            raise HTTPException(400, f"Couldn't save the timeline: {ex}")
+        save_doc(path, doc)
+        J._set_edit(pid, eid, timeline=str(path), changed=True, render_from="timeline")  # noqa: SLF001
+        return _with_media(pid, doc)
+
+    @app.post("/api/projects/{pid}/edits/{eid}/timeline/reset", dependencies=user)
+    async def reset_timeline(pid: str, eid: str):
+        """Re-create the automatic captions/effects (keeps what you added or edited yourself)."""
+        import json as _json
+
+        from ..timeline import build_document, load as load_doc, save as save_doc
+
+        p, e, path = _timeline_path(pid, eid)
+        sel = _json.loads(Path(e["selection"]).read_text())
+        old = load_doc(path) if path.exists() else None
+        if old:  # keep the clip order/trims from the editor
+            sel = {**sel, "clips": [{k: c[k] for k in ("id", "hash", "start", "end")} for c in old["clips"]],
+                   "options": old.get("options", sel.get("options"))}
+        doc = await run_in_threadpool(build_document, sel, None, _profile_for(p, sel), None, old)
+        save_doc(path, doc)
+        J._set_edit(pid, eid, timeline=str(path), changed=True, render_from="timeline")  # noqa: SLF001
+        return _with_media(pid, doc)
+
+    @app.get("/api/library", dependencies=user)
+    def library():
+        from ..library import list_sfx, list_stickers
+
+        sfx = [{k: v for k, v in it.items() if k != "path"} | {"url": f"/api/library/file?kind=sfx&id={it['id']}"}
+               for it in list_sfx()]
+        st = [{k: v for k, v in it.items() if k != "path"} | {"url": f"/api/library/file?kind=stickers&id={it['id']}"}
+              for it in list_stickers()]
+        return {"sfx": sfx, "stickers": st}
+
+    @app.get("/api/library/file", dependencies=user)
+    def library_file(kind: str, id: str):
+        from ..library import resolve
+
+        if kind not in ("sfx", "stickers"):
+            raise HTTPException(400, "kind must be sfx or stickers")
+        try:
+            return FileResponse(resolve(id, kind), headers={"Cache-Control": "private, max-age=86400"})
+        except FileNotFoundError:
+            raise HTTPException(404, "Not found.")
+
+    @app.post("/api/library/{kind}", dependencies=user)
+    async def library_upload(kind: str, file: UploadFile = File(...)):
+        from ..library import AUDIO_EXTS, IMAGE_EXTS, user_dir
+        from .uploads import safe_name
+
+        if kind not in ("sfx", "stickers"):
+            raise HTTPException(400, "kind must be sfx or stickers")
+        name = safe_name(file.filename or "file")
+        ok = AUDIO_EXTS if kind == "sfx" else IMAGE_EXTS
+        if Path(name).suffix.lower() not in ok:
+            raise HTTPException(415, f"Use one of: {', '.join(sorted(ok))}")
+        dest = user_dir(kind) / name
+        data = await file.read()
+        if len(data) > 20 * 1024 * 1024:
+            raise HTTPException(413, "File too large (20 MB max).")
+        dest.write_bytes(data)
+        return {"id": f"user:{dest.name}"}
+
     # ------------------------------------------------------------------ Google Drive
     @app.get("/api/drive", dependencies=user)
     def drive(pid: str | None = None):

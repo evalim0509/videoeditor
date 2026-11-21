@@ -140,7 +140,8 @@ def _run_edit(j: dict, prog) -> None:
     first = res["outputs"][0]
     _set_edit(pid, eid, status="done", summary=res["summary"], warnings=res["warnings"],
               spec=res["spec"], selection=first["selection"], video=first["video"],
-              preview=first["preview"], duration=first["duration"], finished=time.time())
+              preview=first["preview"], duration=first["duration"], finished=time.time(),
+              timeline=first["info"].get("timeline"))
     # extra versions become their own edits
     for k, o in enumerate(res["outputs"][1:], 2):
         def add(q, o=o, k=k):
@@ -148,7 +149,8 @@ def _run_edit(j: dict, prog) -> None:
                                "instruction": f"{e['instruction']} (version {k})",
                                "summary": res["summary"], "status": "done", "spec": res["spec"],
                                "selection": o["selection"], "video": o["video"],
-                               "preview": o["preview"], "duration": o["duration"]})
+                               "preview": o["preview"], "duration": o["duration"],
+                               "timeline": o["info"].get("timeline")})
         P.update(pid, add)
 
 
@@ -169,11 +171,21 @@ def _run_render(j: dict, prog) -> None:
     _set_edit(pid, eid, status="running", error=None)
     name = sel.get("style") or p.get("style")
     prof = load_profile(name) if name and name in list_profiles() else None
+    from ..timeline import load as load_doc, render_document
+
     out = Path(e["video"])
-    info = render_styled(sel, out, spec=EditSpec(**sel.get("spec", {})), profile=prof,
-                         options=RenderOptions(**sel.get("options", {})), progress=prog)
+    doc_path = Path(e["timeline"]) if e.get("timeline") else None
+    if e.get("render_from") == "timeline" and doc_path and doc_path.exists():
+        # edited in the timeline editor: render exactly what's on the timeline
+        info = render_document(load_doc(doc_path), out, profile=prof, progress=prog)
+    else:
+        # changed in quick review / settings: rebuild automatic items, keep what you placed yourself
+        old = load_doc(doc_path) if doc_path and doc_path.exists() else None
+        info = render_styled(sel, out, spec=EditSpec(**sel.get("spec", {})), profile=prof,
+                             options=RenderOptions(**sel.get("options", {})), keep_doc=old, progress=prog)
+        doc_path = Path(info["timeline"])
     _set_edit(pid, eid, status="done", duration=info["duration"], preview=info["preview"],
-              finished=time.time(), rendered=time.time())
+              finished=time.time(), rendered=time.time(), timeline=str(doc_path), render_from=None)
 
 
 RUNNERS = {"analyze": _run_analyze, "ref": _run_analyze, "style": _run_style,

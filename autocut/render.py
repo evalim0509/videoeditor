@@ -84,8 +84,12 @@ def measure_lufs(path: Path) -> float:
 def render_timeline(clips: list[TimelineClip], out: Path, *, fps: float | None = None,
                     size: tuple[int, int] | None = None, subtitles: Path | None = None,
                     preview: bool = True, crf: int = 18, fontsdir: Path | None = None,
-                    loudness: float = TARGET_LUFS,
+                    loudness: float = TARGET_LUFS, overlays: list[dict] | None = None,
+                    sfx: list[dict] | None = None, flashes: list[tuple[float, float]] | None = None,
                     progress: Callable[[str, float], None] | None = None) -> dict:
+    """overlays: stickers [{path, t0, t1, x, y (centre, 0..1), w (fraction of width), rotation}]
+    sfx: sound effects [{path, t, gain_db}] mixed in before loudness normalisation
+    flashes: [(t0, t1)] white flash frames on the output timeline"""
     if not clips:
         raise ValueError("Nothing to render: the timeline is empty.")
     out = Path(out)
@@ -166,6 +170,20 @@ def render_timeline(clips: list[TimelineClip], out: Path, *, fps: float | None =
             run_ffmpeg(inputs + ["-filter_complex", ";".join(graph), "-map", f"[{prev}]",
                                  "-c:a", "pcm_s16le", str(joined)])
 
+        # ---- sound effects on top of the dialogue
+        if sfx:
+            mixed = work / "audio_fx.wav"
+            ins, g = ["-i", str(joined)], []
+            for k, e in enumerate(sfx):
+                ins += ["-i", str(e["path"])]
+                ms = max(0, int(round(e["t"] * 1000)))
+                g.append(f"[{k + 1}:a]aformat=channel_layouts=stereo,aresample={AUDIO_RATE},"
+                         f"volume={e.get('gain_db', -6):.1f}dB,adelay={ms}|{ms}[f{k}]")
+            g.append("[0:a]" + "".join(f"[f{k}]" for k in range(len(sfx))) +
+                     f"amix=inputs={len(sfx) + 1}:normalize=0:duration=first[m]")
+            run_ffmpeg(ins + ["-filter_complex", ";".join(g), "-map", "[m]", "-c:a", "pcm_s16le", str(mixed)])
+            joined = mixed
+
         # ---- loudness: two-pass loudnorm to -14 LUFS
         prog("normalising loudness", 0.78)
         meas = _loudnorm_measure(joined, loudness)
@@ -192,15 +210,35 @@ def render_timeline(clips: list[TimelineClip], out: Path, *, fps: float | None =
         lst = work / "list.txt"
         lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in seg_videos))
         total = sum(frames) / fps
-        vf_final = ["setpts=PTS-STARTPTS"]
+        def esc(p: Path) -> str:
+            return str(p).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+
+        extra_in: list[str] = []
+        graph = ["[0:v]setpts=PTS-STARTPTS[b0]"]
+        cur = "b0"
+        for k, (a, b) in enumerate(flashes or []):
+            graph.append(f"[{cur}]drawbox=x=0:y=0:w=iw:h=ih:color=white@0.8:t=fill:"
+                         f"enable='between(t,{a:.3f},{b:.3f})'[fl{k}]")
+            cur = f"fl{k}"
+        for k, o in enumerate(overlays or []):
+            idx = 2 + k
+            extra_in += ["-loop", "1", "-i", str(o["path"])]
+            px = max(8, int(round(o.get("w", 0.12) * W)))
+            rot = float(o.get("rotation", 0) or 0)
+            prep = f"[{idx}:v]format=rgba,scale={px}:-1"
+            if abs(rot) > 0.5:
+                prep += f",rotate={rot * 3.14159265 / 180:.4f}:c=none:ow=rotw({rot * 3.14159265 / 180:.4f}):oh=roth({rot * 3.14159265 / 180:.4f})"
+            graph.append(prep + f"[st{k}]")
+            graph.append(f"[{cur}][st{k}]overlay=x={o['x'] * W:.1f}-overlay_w/2:y={o['y'] * H:.1f}-overlay_h/2:"
+                         f"enable='between(t,{o['t0']:.3f},{o['t1']:.3f})':eof_action=pass[ov{k}]")
+            cur = f"ov{k}"
         if subtitles:
-            def esc(p: Path) -> str:
-                return str(p).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-            vf_final.append(f"subtitles='{esc(subtitles)}'" +
-                            (f":fontsdir='{esc(fontsdir)}'" if fontsdir and fontsdir.exists() else ""))
+            graph.append(f"[{cur}]subtitles='{esc(subtitles)}'" +
+                         (f":fontsdir='{esc(fontsdir)}'" if fontsdir and fontsdir.exists() else "") + "[sub]")
+            cur = "sub"
         tmp_out = out.with_suffix(".part.mp4")
-        run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(lst), "-i", str(loud),
-                    "-map", "0:v:0", "-map", "1:a:0", "-vf", ",".join(vf_final),
+        run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(lst), "-i", str(loud), *extra_in,
+                    "-filter_complex", ";".join(graph), "-map", f"[{cur}]", "-map", "1:a:0",
                     "-c:v", "libx264", "-preset", "fast", "-crf", str(crf), "-pix_fmt", "yuv420p",
                     "-profile:v", "high", "-r", f"{fps}", "-fps_mode", "cfr",
                     "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",

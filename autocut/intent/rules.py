@@ -97,7 +97,8 @@ class RuleBasedParser:
         duration = self._duration(t, num_re, numbers)
 
         # 2b. style wishes → edit settings ("no zoom cuts", "lowercase captions", "keep my colours")
-        pairs = [(str(ph).lower(), e) for e in (v.get("style_options") or []) for ph in e["phrases"]]
+        pairs = [(str(ph).lower(), e) for e in (v.get("style_options") or []) + (v.get("effect_options") or [])
+                 for ph in e["phrases"]]
         for phrase, entry in sorted(pairs, key=lambda x: -len(x[0])):
             for m in t.find(rf"(?<![\w']){_alt([phrase])}(?![\w'])"):
                 spec.options.update(entry["set"])

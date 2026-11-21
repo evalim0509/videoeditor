@@ -444,64 +444,29 @@ def build_segments(selection: dict, profile: StyleProfile | None,
 
 def render_styled(selection: dict, out: Path, *, spec: EditSpec | None = None,
                   profile: StyleProfile | None = None, options=None, preview: bool = True,
+                  keep_doc: dict | None = None,
                   progress: Callable[[str, float], None] | None = None) -> dict:
-    """Render a selection with every styling decision taken from RenderOptions (stored with the
-    selection as "options", so the app can edit them later)."""
+    """Build the editable timeline for this selection (captions, zoom cuts, sound effects, stickers,
+    flashes… following the style + instruction) and render it. The timeline is saved next to the
+    video as <name>.timeline.json so the editor can open it."""
     from .options import RenderOptions
+    from .timeline import build_document, render_document, save
 
     spec = spec or EditSpec(**selection.get("spec", {}))
     if options is None:
         options = (RenderOptions(**selection["options"]) if selection.get("options")
                    else RenderOptions.from_spec(spec))
-    first = db.get_media(selection["clips"][0]["hash"])["meta"]
-    aspect = options.aspect if options.aspect in ASPECTS else None   # None = keep source shape
-    src_w, src_h = first["display_width"], first["display_height"]
-    size = output_size(aspect, src_w, src_h) if aspect else (src_w - src_w % 2, src_h - src_h % 2)
-    fps = first.get("fps") or 30.0
-    captions = options.captions if options.captions is not None else bool(profile and profile.captions_present)
-
-    work = get_settings().home / "renders" / f"style_{uuid.uuid4().hex[:10]}"
-    work.mkdir(parents=True, exist_ok=True)
-    try:
-        segs, pace = build_segments(selection, profile, options)
-        luts: dict[str, Path] = {}
-        if options.color_match and profile and profile.lab_mean:
-            for h in {s.hash for s in segs}:
-                ranges = [(s.start, s.end) for s in segs if s.hash == h]
-                sm, ss = footage_lab_stats(h, ranges)
-                luts[h] = make_color_lut(sm, ss, profile.lab_mean, profile.lab_std,
-                                         work / f"{h[:10]}.cube")
-        target_aspect = ASPECTS[aspect] if aspect else src_w / src_h
-        tclips = []
-        for s in segs:
-            meta = db.get_media(s.hash)["meta"]
-            vf = []
-            if not options.face_follow:
-                s_center = Segment(s.hash, s.start, s.end, s.clip_index, s.zoom)
-                cf = crop_filter_centered(meta, s_center, target_aspect)
-            else:
-                cf = crop_filter(meta, s, target_aspect)
-            if cf:
-                vf.append(cf)
-            if s.hash in luts:
-                vf.append(f"lut3d=file='{_ffpath(luts[s.hash])}':interp=tetrahedral")
-            tclips.append(TimelineClip(s.hash, s.start, s.end, video_filters=vf,
-                                       xfade_room=0.0 if s.continuous_with_next else None))
-        subs = None
-        n_captions = 0
-        if captions:
-            subs = work / "captions.ass"
-            n_captions = build_captions(segs, fps, size, profile, subs, options=options)
-        info = render_timeline(tclips, out, fps=fps, size=size, subtitles=subs, preview=preview,
-                               fontsdir=ASSETS_DIR / "fonts", loudness=options.loudness_lufs,
-                               progress=progress)
-        info.update({"aspect": aspect or "source", "captions": n_captions,
-                     "color_matched": bool(luts), "segments": len(segs), **pace,
-                     "style": profile.name if profile else None,
-                     "options": options.model_dump()})
-        return info
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    doc = build_document(selection, spec, profile, options, keep=keep_doc)
+    out = Path(out)
+    doc_path = out.with_name(out.stem + ".timeline.json")
+    save(doc_path, doc)
+    info = render_document(doc, out, profile=profile, preview=preview, progress=progress)
+    info.update({"aspect": options.aspect or "source", "captions": info["texts"],
+                 "color_matched": bool(options.color_match and profile and profile.lab_mean),
+                 "segments": len(doc["clips"]) + info["zooms"] * 2, "punch_ins": info["zooms"] * 2,
+                 "style": profile.name if profile else None, "options": options.model_dump(),
+                 "timeline": str(doc_path)})
+    return info
 
 
 def crop_filter_centered(meta: dict, seg: Segment, aspect: float) -> str | None:

@@ -28,6 +28,11 @@ class RenderOptions(BaseModel):
     color_match: bool = False                    # move colours toward the reference look
     beat_sync: bool = True                       # cut on the beat when the reference does
     loudness_lufs: float = -14.0
+    # effects: None = do what the reference videos do; True/False = your choice
+    sound_effects: Optional[bool] = None
+    stickers: Optional[bool] = None
+    flash: Optional[bool] = None
+    shake: Optional[bool] = None
 
     @classmethod
     def from_spec(cls, spec: EditSpec, base: "RenderOptions | None" = None) -> "RenderOptions":
