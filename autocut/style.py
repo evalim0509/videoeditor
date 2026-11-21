@@ -66,6 +66,8 @@ class StyleProfile(BaseModel):
     warmth: float = 0.0              # Lab b* mean (positive = warm/yellow, negative = cool/blue)
     lab_mean: list[float] = Field(default_factory=list)
     lab_std: list[float] = Field(default_factory=list)
+    # sound effects / visual effects / stickers seen in the references (see effects.py)
+    effects: dict = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- per-reference measurements
@@ -378,6 +380,26 @@ def explain(p: StyleProfile) -> list[str]:
     look.append("vivid colours" if p.saturation > 0.45 else "muted/pastel colours" if p.saturation < 0.25 else "natural colours")
     look.append("a warm tint" if p.warmth > 8 else "a cool tint" if p.warmth < -2 else "neutral white balance")
     out.append("The look is " + ", ".join(look[:-1]) + f", with {look[-1]}.")
+    if p.effects:
+        from .effects import enabled
+
+        on = enabled(p.effects)
+        e = p.effects
+        bits = []
+        if on["sfx"]:
+            kinds = ", ".join(k for k, _ in sorted(e.get("sfx_kinds", {}).items(), key=lambda kv: -kv[1])[:3])
+            where = " mostly on cuts" if e.get("sfx_on_cuts", 0) >= 0.5 else ""
+            bits.append(f"sound effects ({kinds}) about {e['sfx_per_minute']:.0f} per minute{where}")
+        if on["stickers"]:
+            bits.append(f"stickers/emoji about {e['stickers_per_minute']:.0f} per minute")
+        if on["flash"]:
+            bits.append(f"flash transitions on {e['flash_rate']:.0%} of cuts")
+        if on["zoom"]:
+            bits.append(f"zoom-ins about {e['zooms_per_minute']:.0f} per minute")
+        if on["shake"]:
+            bits.append(f"camera-shake effects about {e['shakes_per_minute']:.0f} per minute")
+        out.append(("Effects: " + "; ".join(bits) + ".") if bits else
+                   "No sound effects, stickers or flashy transitions — the edit stays clean.")
     return out
 
 
@@ -406,8 +428,14 @@ def list_profiles() -> list[str]:
 def analyze_references(paths: list[Path], name: str) -> StyleProfile:
     from .ingest import ingest_paths
 
+    from .effects import measure_effects, summarize
+
     results = ingest_paths(paths)
     refs = [measure_reference(r.hash) for r in results]
     profile = build_profile(name, refs)
+    try:
+        profile.effects = summarize([measure_effects(r.hash) for r in results])
+    except Exception as e:  # effects are a bonus; never fail the style analysis because of them
+        print(f"[autocut] effect detection skipped: {e}")
     save_profile(profile)
     return profile

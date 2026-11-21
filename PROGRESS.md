@@ -458,3 +458,27 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - Install on the user's computer: download the branch ZIP → double-click `INSTALL-Windows.bat` /
   `INSTALL-Mac.command` (setup script installs everything, models, auto-start, desktop icon, Tailscale
   HTTPS, prints first password + phone address).
+
+### Effects from reference videos (sound effects, stickers, visual effects)
+- Decisions from the user: library = built-in **and** your own packs (yours preferred); runs on
+  your own computer; effects follow the references **and** the instruction can add/remove them; all
+  editable afterwards.
+- `autocut/library.py`: 13 built-in sound effects synthesised locally with FFmpeg (whoosh,
+  swoosh up/down, pop, click, ding, chime, boom, thud, riser, boing, shutter, cash) — royalty-free,
+  generated into `data/library/builtin_sfx/`; 42 emoji stickers rendered from Noto Color Emoji (OFL)
+  into `autocut/assets/stickers/`. Your packs: `data/library/sfx/`, `data/library/stickers/`
+  (name files by kind, e.g. `whoosh_2.wav`). PANNs recognises the built-in whoosh/ding/chime/cash.
+- `autocut/effects.py` (cached `effects_ref`), added to StyleProfile as `effects` + explanation:
+  - sound effects: PANNs labels (1 s windows, 0.25 s hop) + **cut-aligned burst detector** (bursts
+    ≥10 dB over the local 2 s level within −0.45/+0.25 s of a cut, ≥40 % of cuts and ≥2.5× the rate
+    at random moments) — model labels alone missed whooshes mixed under music + voice;
+  - flashes: luma spike brighter than *both* sides of a cut;
+  - zoom-ins (positive optical-flow divergence ≥0.4 s), shakes (jittery global motion, not near cuts);
+  - stickers: colourful, sharp, still ≥1 s, surroundings moving (≥75 % of the ring changes), and it
+    **popped in** (spot looked different 2 s earlier), not caption text, ≤28 % of the frame.
+  - effect types are only used when the references show them often enough (sfx/stickers ≥2/min,
+    flash ≥15 % of cuts, zoom/shake ≥1/min) — stray detections (e.g. YouTube's "More videos" thumbnail
+    in a screen recording) don't count.
+- Verified: synthetic reference with whooshes on cuts + flashes + emoji stickers → whoosh on 8/9 cuts,
+  9 flashes, 6/6 stickers, all enabled; user's Paris reference and the test clip → nothing enabled
+  ("the edit stays clean"). Test: `tests/test_effects.py`.
