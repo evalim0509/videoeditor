@@ -118,3 +118,12 @@ Module per stage (`autocut/<stage>.py`), each with its own `autocut <command>`:
     phone, the address to open, and a guided test of upload, voice, review and download.
 17. Auto-start on boot, keep running in the background, double-clickable launcher and a desktop
     shortcut that opens it in the browser.
+
+## Added after the plan (user requests)
+
+18. Effects from references: detect sound effects, stickers, flashes, zooms, shakes in reference
+    videos and add similar ones (built-in library + your own packs); instruction can add/remove them.
+19. CapCut-style editor after the auto-edit: preview with draggable/resizable/rotatable text and
+    stickers, scrolling multi-track timeline (clips, text, stickers, sounds, effects), drag to
+    reorder/trim, split, duplicate, delete, style, undo/redo, add text/stickers/sounds/effects,
+    export. Backed by an editable timeline document that the renderer renders exactly.

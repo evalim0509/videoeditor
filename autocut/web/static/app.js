@@ -143,11 +143,13 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && cu
 // ------------------------------------------------------------------ router
 async function route() {
   clearTimeout(current.timer);
+  document.body.classList.remove("ed-dark");
   current.pid = null; current.project = null; current.sig = ""; current.edStatus = {};
   const h = location.hash || "#/";
   let m;
   if (h === "#/login") return screenLogin();
   try { await api("/api/me"); } catch { return; }
+  if ((m = h.match(/^#\/p\/([a-z0-9]+)\/edit\/([a-z0-9]+)$/))) return window.screenEditor ? window.screenEditor(m[1], m[2]) : go(`#/p/${m[1]}`);
   if ((m = h.match(/^#\/p\/([a-z0-9]+)\/review\/([a-z0-9]+)$/))) return window.screenReview ? window.screenReview(m[1], m[2]) : go(`#/p/${m[1]}`);
   if ((m = h.match(/^#\/p\/([a-z0-9]+)$/))) return screenProject(m[1]);
   return screenProjects();
@@ -367,8 +369,9 @@ function editCard(p, e) {
       <video controls playsinline preload="metadata" src="${base}?quality=preview&v=${v}"></video>
       ${(e.warnings || []).map((w) => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}
       <div class="actions">
-        <a class="btn primary small-btn" href="${base}?quality=full&download=1" download>Download full quality</a>
-        <a class="btn small-btn" href="#/p/${p.id}/review/${e.id}">Review &amp; change</a>
+        <a class="btn small-btn" href="${base}?quality=full&download=1" download>Download</a>
+        <a class="btn small-btn primary" href="#/p/${p.id}/edit/${e.id}">Edit</a>
+        <a class="btn small-btn" href="#/p/${p.id}/review/${e.id}">Quick review</a>
         <button class="btn small-btn" data-export="${e.id}">Export for editing apps</button>
       </div>
       <p class="small muted" style="margin:8px 0 0">iPhone: after downloading, open it from Files → Share → Save Video to put it in Photos.</p></div>`;
@@ -620,4 +623,4 @@ function openMenu() {
 try { const th = localStorage.getItem("theme"); if (th) document.documentElement.dataset.theme = th; } catch { }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { });
 window.autocut = { api, go, sheet, toast, esc, fmtDur, setTop, current, refreshProject, $, $$, icon, SETTINGS };
-import("/static/review.js").catch(() => { }).finally(route);
+Promise.all([import("/static/review.js"), import("/static/editor.js")].map((p) => p.catch(() => { }))).finally(route);

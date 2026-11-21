@@ -287,6 +287,8 @@ def normalize(doc: dict) -> dict:
             continue
         clips.append({**c, "id": c.get("id") or _id("c"), "start": round(s, 3), "end": round(e, 3)})
     doc["clips"] = clips
+    if clips:  # the shape may have changed in the editor's settings
+        doc["canvas"] = _canvas({"clips": clips}, opts)
     ids = {c["id"] for c in clips}
     for tr in TRACKS:
         items = []

@@ -1,7 +1,7 @@
 // Service worker: makes autocut installable ("Add to Home Screen") and opens instantly.
 // Only the app shell is cached; the API and videos always come live from your computer.
-const CACHE = "autocut-shell-v1";
-const SHELL = ["/", "/static/app.css", "/static/app.js", "/static/review.js", "/static/icon-192.png",
+const CACHE = "autocut-shell-v2";
+const SHELL = ["/", "/static/app.css", "/static/app.js", "/static/review.js", "/static/editor.js", "/static/editor.css", "/static/icon-192.png",
   "/static/icon-512.png", "/static/apple-touch-icon.png", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

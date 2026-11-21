@@ -482,3 +482,46 @@ Legend: [x] done and verified on `test_footage/` · [ ] not started · **[ME]** 
 - Verified: synthetic reference with whooshes on cuts + flashes + emoji stickers → whoosh on 8/9 cuts,
   9 flashes, 6/6 stickers, all enabled; user's Paris reference and the test clip → nothing enabled
   ("the edit stays clean"). Test: `tests/test_effects.py`.
+
+- [x] 18. Effects from references (see above)
+- [x] 19. CapCut-style timeline editor
+
+### Phase 19 — timeline document + CapCut-style editor
+- `autocut/timeline.py`: every edit is an editable document — clips (main track, play order),
+  texts (captions + titles: position, scale, rotation, colour/outline/bold/box), stickers (asset,
+  position, size, rotation), sounds (asset, gain), effects (zoom cut / flash / shake). Captions are
+  anchored to the source time of their words (they follow the speech when clips are reordered or
+  trimmed); other items to their clip + offset. Items you add/edit are flagged so regenerating the
+  automatic ones keeps them. `normalize()` validates edits from the app (clip edges snapped to word
+  gaps — never mid-word — canvas recomputed when the shape changes, orphans dropped).
+- Rendering: `render_document()` splits clips at zoom/shake boundaries (crop + face-follow, shake =
+  oscillating crop), colour LUT if enabled; `render_timeline()` gained sticker overlays (scaled,
+  rotated PNGs with enable windows), sound effects mixed *before* loudness normalisation, flash
+  frames; texts → ASS events with `\pos`, size, colours, `\frz`. All renders (auto-edits, quick
+  review, editor) go through the document; `<edit>.timeline.json` is saved next to the video.
+- Auto placement (`effect_items`): zoom cuts at word gaps; sound effects on cuts in the reference's
+  kinds/rate; flashes on every k-th cut by the reference's flash rate; stickers at each clip's most
+  expressive moment (laughter → 😂, "oh my…" → 😱, food words → 😋🍜🥟, else 🔥✨) beside the face,
+  alternating sides; shakes at peaks. Switches: reference → instruction ("add sound effects",
+  "no stickers", "clean edit"…) → editor.
+- Editor (`static/editor.js` + `editor.css`, route `#/p/<pid>/edit/<eid>`): dark CapCut-like layout —
+  ✕ / Saved / Export; preview box with live overlays (texts, stickers), zoom/flash/shake preview;
+  selected overlay shows delete / edit / duplicate / rotate-scale handles; drag to move. Timeline:
+  centre playhead, scroll = scrub, pinch / ctrl-wheel / buttons to zoom, thumbnail strips,
+  orange text, purple sticker, blue sound, green effect rows; tap to select; drag a selected block
+  to move it in time, drag its edges to change duration; drag a selected clip to reorder, trim with
+  its white edge handles; "+" adds a runner-up moment at the playhead. Context toolbar: Add text,
+  Stickers (grid + upload your own), Sounds (listen + upload your own), Effects, Captions (case,
+  position, remove, re-create automatic items), Settings; clip: Split / Move ◀▶ / Duplicate / Delete;
+  text: Edit / Style (size, colour, outline, bold, box, apply to all captions) / Split / Duplicate /
+  Delete; sticker: Replace / Duplicate / Delete; sound: Replace / Quieter / Louder / Listen / Delete;
+  effect: Change / Duplicate / Delete. Undo/redo (80 steps); auto-save (debounced PUT, server
+  normalises); Export renders exactly the timeline.
+- Verified on iPhone 13 emulation: open, add "test" text, drag (+40,+60 px), rotate/scale, colour,
+  split clip (13→14), move, trim, add sticker/sound/flash, undo/redo, reload (all persisted), export →
+  final video shows the yellow "test" text at the dragged spot, the sticker at its time, captions.
+  Fixed during testing: moved clip scrolled out of view (playhead now follows it); preview box
+  overlapped the controls after layout changes (auto-fit + controls above); handles covered small
+  text (minimum selection box); undo/redo stacked (now side by side).
+- Tests: `tests/test_timeline.py` (anchoring, normalisation/never mid-word, ASS positions, effect
+  switches), `tests/test_effects.py`.
