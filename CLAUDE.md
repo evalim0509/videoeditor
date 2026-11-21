@@ -29,9 +29,13 @@ computer does all processing.
 - Vlog style, not TikTok style: keep the footage's original (horizontal) aspect ratio unless the
   instruction explicitly asks for another shape.
 - Captions are plain lines that appear whole — no word-by-word highlighting.
-- Don't change the colour unless asked (colour matching is opt-in).
+- Colour: match the references' colour grade when they have a distinct look (changed by the user
+  from "don't change the colour"); still switchable per edit.
 - Punch-in zoom cuts are sparse: no closer than ~4 s apart by default (every ~2 s was too frequent).
 - Captions only show the user's own voice (speaker check); other people's voices aren't captioned.
+- Vlog elements: the user's include/exclude choices for 31 elements are in `VLOG_ELEMENTS.md`
+  (mostly "follow the references"; always: music ducking, filler/silence removal, voice clean-up,
+  cover image; never: watermark). Custom reference stickers are lifted from the reference video.
 - Main workflow: drop videos into a Google Drive folder (synced to the computer), describe the
   edit/style in words, autocut edits automatically; everything adjustable afterwards.
 
